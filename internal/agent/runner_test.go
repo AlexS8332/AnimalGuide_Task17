@@ -443,3 +443,44 @@ func TestEmitters(t *testing.T) {
 	Nop{}.Log(Event{})
 	Nop{}.Publish(Update{})
 }
+
+// Вызов кодом до первого запроса: модель получает его как свой первый шаг
+// (вызов и ответ с пометкой источника), запросом к модели он не считается,
+// а инструмента, которого у агента нет, код не зовёт.
+func TestRunnerPreloadSavesRequest(t *testing.T) {
+	r, fake := runner(func(req llm.Request) (llm.Response, error) {
+		return llmtest.Text("готово по " + llmtest.LastToolReply(req)), nil
+	})
+	rec := &Recorder{}
+	reply, err := r.Run(context.Background(),
+		Spec{Name: "section.diet", System: "система", Tools: []tools.Tool{echo("read_wikipedia", true, `{"text":"ест зайцев"}`)}},
+		Prepared{User: "тема: питание", Features: allOn(), Preload: []Preload{
+			{Tool: "read_wikipedia", Args: `{"title":"Рысь","section":"Питание"}`},
+			{Tool: "match_taxon", Args: `{}`},
+		}}, rec)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if fake.Calls() != 1 || reply.Stats.Steps != 1 || reply.Stats.ToolCalls != 1 {
+		t.Fatalf("запросов %d, шагов %d, вызовов %d", fake.Calls(), reply.Stats.Steps, reply.Stats.ToolCalls)
+	}
+	req := fake.Requests[0]
+	roles := make([]string, len(req.Messages))
+	for i, m := range req.Messages {
+		roles[i] = m.Role
+	}
+	if strings.Join(roles, ",") != "system,user,assistant,tool" {
+		t.Fatalf("порядок сообщений: %v", roles)
+	}
+	call := req.Messages[2].ToolCalls
+	if len(call) != 1 || call[0].Function.Name != "read_wikipedia" || !strings.HasPrefix(call[0].ID, "pre_read_wikipedia_") {
+		t.Fatalf("вызов кодом: %+v", call)
+	}
+	if _, wrapped := tools.Unwrap(req.Messages[3].Content); !wrapped || req.Messages[3].ToolCallID != call[0].ID {
+		t.Fatalf("ответ без пометки источника или не к тому вызову: %+v", req.Messages[3])
+	}
+	kinds := strings.Join(rec.Kinds(), ",")
+	if !strings.HasPrefix(kinds, "prompt,tool.call,tool.result,note,llm.request,llm.response") {
+		t.Fatalf("журнал: %s", kinds)
+	}
+}

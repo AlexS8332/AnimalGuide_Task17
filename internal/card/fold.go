@@ -178,6 +178,21 @@ func (s *State) Find(name string) *Card {
 	return nil
 }
 
+// Refused — последний отказ пути по тому же названию запроса: сравнение
+// без регистра и «ё», как у Find.
+func (s *State) Refused(name string) *NotFound {
+	want := norm(name)
+	if want == "" {
+		return nil
+	}
+	for i := len(s.NotFound) - 1; i >= 0; i-- {
+		if norm(s.NotFound[i].Query) == want {
+			return &s.NotFound[i]
+		}
+	}
+	return nil
+}
+
 func norm(s string) string {
 	s = strings.ToLower(strings.TrimSpace(s))
 	return strings.ReplaceAll(s, "ё", "е")

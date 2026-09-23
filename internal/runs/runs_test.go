@@ -80,7 +80,7 @@ func TestFirstTurnOfNewDialog(t *testing.T) {
 	if d.TurnList[0].Effective.Empty() || !d.TurnList[0].Requested.On(features.Tracker) {
 		t.Fatal("механизмы хода не записаны")
 	}
-	if len(d.TurnList[0].Events) == 0 || d.TurnList[0].Totals.LLMCalls != 5 {
+	if len(d.TurnList[0].Events) == 0 || d.TurnList[0].Totals.LLMCalls != 4 { // привратник + идентификатор (чтение, сверка, сдача)
 		t.Fatalf("журнал и счётчики хода: %d событий, %d запросов", len(d.TurnList[0].Events), d.TurnList[0].Totals.LLMCalls)
 	}
 	if len(d.Mechanisms) != len(features.Catalog().All()) || len(d.BranchTree) != 1 {

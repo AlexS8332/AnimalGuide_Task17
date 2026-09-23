@@ -113,21 +113,29 @@ func (t *Tracker) Record(name, callID, out string) {
 	switch name {
 	case "match_taxon":
 		var m struct {
-			Found     bool   `json:"found"`
-			UsageKey  int    `json:"usage_key"`
-			Canonical string `json:"canonical_name"`
-			Rank      string `json:"rank"`
-			Kingdom   string `json:"kingdom"`
-			Phylum    string `json:"phylum"`
-			Class     string `json:"class"`
-			Order     string `json:"order"`
-			Family    string `json:"family"`
-			Genus     string `json:"genus"`
+			Found      bool   `json:"found"`
+			UsageKey   int    `json:"usage_key"`
+			Canonical  string `json:"canonical_name"`
+			Scientific string `json:"scientific_name"`
+			Rank       string `json:"rank"`
+			Kingdom    string `json:"kingdom"`
+			Phylum     string `json:"phylum"`
+			Class      string `json:"class"`
+			Order      string `json:"order"`
+			Family     string `json:"family"`
+			Genus      string `json:"genus"`
 		}
 		if json.Unmarshal([]byte(out), &m) == nil && m.Found && m.Canonical != "" {
-			t.matched[strings.ToLower(m.Canonical)] = match{Key: m.UsageKey, Canonical: m.Canonical, Rank: m.Rank, CallID: callID,
+			got := match{Key: m.UsageKey, Canonical: m.Canonical, Rank: m.Rank, CallID: callID,
 				Taxonomy: map[string]string{"KINGDOM": m.Kingdom, "PHYLUM": m.Phylum, "CLASS": m.Class,
 					"ORDER": m.Order, "FAMILY": m.Family, "GENUS": m.Genus}}
+			t.matched[strings.ToLower(m.Canonical)] = got
+			// Модель то и дело сдаёт латынь с автором и годом — так, как её
+			// вернул тот же ответ в scientific_name. Это та же сверка, и
+			// отказ ради неё стоил бы лишнего запроса к модели.
+			if sci := strings.ToLower(strings.TrimSpace(m.Scientific)); sci != "" {
+				t.matched[sci] = got
+			}
 		}
 	case "taxon_tree":
 		var r struct {
@@ -210,7 +218,30 @@ func (t *Tracker) Match(latin string) (match, bool) {
 	t.mu.Lock()
 	defer t.mu.Unlock()
 	m, ok := t.matched[strings.ToLower(strings.TrimSpace(latin))]
+	if !ok {
+		m, ok = t.matched[strings.ToLower(CanonicalLatin(latin))]
+	}
 	return m, ok
+}
+
+// CanonicalLatin — латынь без автора и года: «Lynx lynx (Linnaeus, 1758)» →
+// «Lynx lynx», «Grus Brisson, 1760» → «Grus». Род с заглавной и следом
+// эпитеты строчными; всё, что после первого слова с заглавной, цифры или
+// скобки, — авторство. Сверка остаётся сверкой: ключ берётся из ответа
+// match_taxon, а не из этой строки.
+func CanonicalLatin(latin string) string {
+	f := strings.Fields(latin)
+	if len(f) == 0 {
+		return ""
+	}
+	out := []string{strings.Trim(f[0], ",")}
+	for _, w := range f[1:] {
+		if w == "" || strings.ContainsAny(w, "(),0123456789&") || strings.ToLower(w) != w {
+			break
+		}
+		out = append(out, w)
+	}
+	return strings.Join(out, " ")
 }
 
 // Tree — дерево таксона, если его запрашивали.

@@ -3,62 +3,67 @@ package features
 // catalog — все механизмы продукта. Новый механизм — новая строка здесь
 // (точка роста Р-9), а не правка сборщика запроса.
 //
-// Цены в токенах — оценки по опытам прошлых упражнений (свод ≈2,4 тыс.,
-// состояние ≈1,1 тыс., профиль ≈430) и уточняются испытанием И-6.
+// Цены в токенах — измерения испытания И-6 (прогон 2026-09-23, пары дорожек
+// «включён — выключен», оценка блока в запросе хода): свод ≈1553, профиль
+// ≈123 (анкета «любитель»), долговременная память ≈77, состояние подборки
+// ≈250 с правами этапа и ≈97 без них, рабочая память ≈61, карточка фактов
+// ≈149 (вместе со списком карточек пути). Прежние числа — оценки опытов
+// 08–15 (свод ≈2,4 тыс., состояние ≈1,1 тыс., профиль ≈430) — завышали
+// всё, кроме свода, в 2–9 раз.
 var catalog = []Mechanism{
 	{
 		Name: Charter, Title: "Свод инвариантов", Since: "v15",
 		Kind: KindBlock | KindTool, Place: PlaceCharter, Default: true,
-		Cost:     Cost{Tokens: 1400, Churn: ChurnRare, Note: "меняется только процедурой propose → accept"},
+		Cost:     Cost{Tokens: 1550, Churn: ChurnRare, Note: "меняется только процедурой propose → accept"},
 		Fallback: "те же правила дословно уходят абзацем системного промпта — без сверки, стража и процедуры",
 		About:    "правила справочника первым блоком запроса и инструмент сверки invariant_check",
 	},
 	{
 		Name: Guard, Title: "Страж ответа", Since: "v15",
 		Kind: KindCall | KindCheck, Requires: []Name{Charter}, Default: true,
-		Cost:     Cost{Requests: 0.3, Churn: ChurnNone, Note: "судья зовётся только когда код нашёл подозрительные фрагменты"},
+		Cost:     Cost{Requests: 0.3, Churn: ChurnNone, Note: "судья зовётся только когда код нашёл подозрительные фрагменты: 4 хода из 11 на провокациях И-5, 0 из 12 на длинном диалоге И-6"},
 		Fallback: "ответ уходит пользователю без проверки; в журнале — «страж выключен»",
 		About:    "код отбирает фрагменты ответа по словам свода, судья решает, нарушен ли свод",
 	},
 	{
 		Name: Profile, Title: "Профиль собеседника", Since: "v15",
 		Kind: KindBlock | KindCheck, Place: PlaceProfile, Default: true,
-		Cost:     Cost{Tokens: 430, Churn: ChurnRare, Note: "правка анкеты обнуляет кэш всего, что после свода"},
+		Cost:     Cost{Tokens: 130, Churn: ChurnRare, Note: "правка анкеты обнуляет кэш всего, что после свода"},
 		Fallback: "ответ по умолчаниям модели; правки анкеты не извлекаются, соблюдение не проверяется",
 		About:    "уровень изложения, длина, форма, обращение, латынь — анкетой, а не пожеланием",
 	},
 	{
 		Name: MemoryLong, Title: "Долговременная память", Since: "v15",
 		Kind: KindBlock, Place: PlaceLong, Default: true,
-		Cost:     Cost{Tokens: 250, Churn: ChurnRare},
+		Cost:     Cost{Tokens: 80, Churn: ChurnRare},
 		Fallback: "сведения о человеке остаются только в окне диалога и пропадают вместе с ним",
 		About:    "интересы, закладки и прочитанное — по человеку, между разговорами",
 	},
 	{
 		Name: CollectionState, Title: "Состояние подборки", Since: "v15",
 		Kind: KindBlock | KindTool, Place: PlaceState, Default: true,
-		Cost:     Cost{Tokens: 900, Churn: ChurnStage},
+		Cost:     Cost{Tokens: 250, Churn: ChurnStage, Note: "с правами этапа; без них ≈100"},
 		Fallback: "подборка ведётся по словам промпта и истории; формального состояния нет",
 		About:    "этап, шаг, ожидаемое действие и инструменты переходов подборки",
 	},
 	{
 		Name: Gates, Title: "Права этапа", Since: "v15",
 		Kind: KindCheck, Requires: []Name{CollectionState}, Default: true,
-		Cost:     Cost{Tokens: 200, Churn: ChurnStage},
+		Cost:     Cost{Tokens: 150, Churn: ChurnStage, Note: "перечень инструментов этапа в блоке состояния"},
 		Fallback: "инструменты подборки выдаются все сразу, порядок этапов — абзацем промпта",
 		About:    "набор инструментов по этапу и предусловия переходов по сделанному",
 	},
 	{
 		Name: MemoryWork, Title: "Рабочая память подборки", Since: "v15",
 		Kind: KindBlock, Place: PlaceWork, Default: true,
-		Cost:     Cost{Tokens: 300, Churn: ChurnTurn},
+		Cost:     Cost{Tokens: 60, Churn: ChurnTurn},
 		Fallback: "собранное по подборке остаётся только в окне диалога",
 		About:    "что уже собрано по текущей подборке; адрес — подборка, а не диалог",
 	},
 	{
 		Name: Facts, Title: "Карточка фактов", Since: "v15",
 		Kind: KindBlock, Place: PlaceFacts, Default: true,
-		Cost:     Cost{Tokens: 200, Churn: ChurnTurn},
+		Cost:     Cost{Tokens: 150, Churn: ChurnTurn, Note: "вместе со списком карточек пути"},
 		Fallback: "то, что ушло из окна, модели не видно — только в файле диалога",
 		About:    "ключевые факты ветки разговора; при ветвлении копируется снимком точки",
 	},
@@ -79,7 +84,7 @@ var catalog = []Mechanism{
 	{
 		Name: Extract, Title: "Извлекатель", Since: "v15",
 		Kind: KindCall, Default: true,
-		Cost:     Cost{Requests: 1, Churn: ChurnNone, Note: "один запрос на ход обслуживает память, профиль и карточку фактов"},
+		Cost:     Cost{Requests: 0.5, Churn: ChurnNone, Note: "один запрос на ход обслуживает память, профиль и карточку фактов; вопрос о животном без слов о человеке — ни одного"},
 		Fallback: "память, профиль и карточка фактов меняются только руками",
 		About:    "раскладывает реплику по слоям памяти, профилю и карточке фактов",
 	},
