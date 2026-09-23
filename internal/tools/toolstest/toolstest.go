@@ -24,6 +24,8 @@ const (
 	KeyOtoG     = 2435268
 	KeyFelisG   = 2435022
 	KeyFelis    = 2435035
+	// Обыкновенный ёж — подставная статья И-5 о еже.
+	KeyErinaceus = 5219616
 )
 
 // LynxExtract — статья «Обыкновенная рысь» текстом, как её отдаёт
@@ -149,16 +151,18 @@ func NewGBIF() *GBIF {
 }
 
 var matches = map[string]string{
-	"lynx lynx":        `{"usageKey":2435240,"scientificName":"Lynx lynx (Linnaeus, 1758)","canonicalName":"Lynx lynx","rank":"SPECIES","status":"ACCEPTED","confidence":99,"matchType":"EXACT","kingdom":"Animalia","class":"Mammalia","order":"Carnivora","family":"Felidae","genus":"Lynx","species":"Lynx lynx"}`,
-	"otocolobus manul": `{"usageKey":2435270,"scientificName":"Otocolobus manul (Pallas, 1776)","canonicalName":"Otocolobus manul","rank":"SPECIES","status":"ACCEPTED","confidence":99,"matchType":"EXACT","kingdom":"Animalia","class":"Mammalia","order":"Carnivora","family":"Felidae","genus":"Otocolobus","species":"Otocolobus manul"}`,
-	"felis silvestris": `{"usageKey":2435035,"scientificName":"Felis silvestris Schreber, 1777","canonicalName":"Felis silvestris","rank":"SPECIES","status":"ACCEPTED","confidence":99,"matchType":"EXACT","kingdom":"Animalia","class":"Mammalia","order":"Carnivora","family":"Felidae","genus":"Felis","species":"Felis silvestris"}`,
-	"lynx striatus":    `{"usageKey":2435239,"canonicalName":"Lynx","rank":"GENUS","status":"ACCEPTED","confidence":90,"matchType":"HIGHERRANK"}`,
-	"felis venenosa":   `{"usageKey":2435022,"canonicalName":"Felis","rank":"GENUS","status":"ACCEPTED","confidence":90,"matchType":"HIGHERRANK"}`,
+	"lynx lynx":           `{"usageKey":2435240,"scientificName":"Lynx lynx (Linnaeus, 1758)","canonicalName":"Lynx lynx","rank":"SPECIES","status":"ACCEPTED","confidence":99,"matchType":"EXACT","kingdom":"Animalia","class":"Mammalia","order":"Carnivora","family":"Felidae","genus":"Lynx","species":"Lynx lynx"}`,
+	"otocolobus manul":    `{"usageKey":2435270,"scientificName":"Otocolobus manul (Pallas, 1776)","canonicalName":"Otocolobus manul","rank":"SPECIES","status":"ACCEPTED","confidence":99,"matchType":"EXACT","kingdom":"Animalia","class":"Mammalia","order":"Carnivora","family":"Felidae","genus":"Otocolobus","species":"Otocolobus manul"}`,
+	"felis silvestris":    `{"usageKey":2435035,"scientificName":"Felis silvestris Schreber, 1777","canonicalName":"Felis silvestris","rank":"SPECIES","status":"ACCEPTED","confidence":99,"matchType":"EXACT","kingdom":"Animalia","class":"Mammalia","order":"Carnivora","family":"Felidae","genus":"Felis","species":"Felis silvestris"}`,
+	"erinaceus europaeus": `{"usageKey":5219616,"scientificName":"Erinaceus europaeus Linnaeus, 1758","canonicalName":"Erinaceus europaeus","rank":"SPECIES","status":"ACCEPTED","confidence":99,"matchType":"EXACT","kingdom":"Animalia","class":"Mammalia","order":"Erinaceomorpha","family":"Erinaceidae","genus":"Erinaceus","species":"Erinaceus europaeus"}`,
+	"lynx striatus":       `{"usageKey":2435239,"canonicalName":"Lynx","rank":"GENUS","status":"ACCEPTED","confidence":90,"matchType":"HIGHERRANK"}`,
+	"felis venenosa":      `{"usageKey":2435022,"canonicalName":"Felis","rank":"GENUS","status":"ACCEPTED","confidence":90,"matchType":"HIGHERRANK"}`,
 }
 
 var parents = map[string]string{
 	"2435240": `[{"key":1,"rank":"KINGDOM","canonicalName":"Animalia"},{"key":359,"rank":"CLASS","canonicalName":"Mammalia"},{"key":9703,"rank":"FAMILY","canonicalName":"Felidae"},{"key":2435239,"rank":"GENUS","canonicalName":"Lynx"}]`,
 	"2435270": `[{"key":1,"rank":"KINGDOM","canonicalName":"Animalia"},{"key":359,"rank":"CLASS","canonicalName":"Mammalia"},{"key":9703,"rank":"FAMILY","canonicalName":"Felidae"},{"key":2435268,"rank":"GENUS","canonicalName":"Otocolobus"}]`,
+	"5219616": `[{"key":1,"rank":"KINGDOM","canonicalName":"Animalia"},{"key":359,"rank":"CLASS","canonicalName":"Mammalia"},{"key":9372,"rank":"FAMILY","canonicalName":"Erinaceidae"},{"key":2440906,"rank":"GENUS","canonicalName":"Erinaceus"}]`,
 	"2435035": `[{"key":1,"rank":"KINGDOM","canonicalName":"Animalia"},{"key":359,"rank":"CLASS","canonicalName":"Mammalia"},{"key":9703,"rank":"FAMILY","canonicalName":"Felidae"},{"key":2435022,"rank":"GENUS","canonicalName":"Felis"}]`,
 }
 
@@ -166,6 +170,7 @@ var selves = map[string]string{
 	"2435240": `{"key":2435240,"rank":"SPECIES","canonicalName":"Lynx lynx"}`,
 	"2435270": `{"key":2435270,"rank":"SPECIES","canonicalName":"Otocolobus manul"}`,
 	"2435035": `{"key":2435035,"rank":"SPECIES","canonicalName":"Felis silvestris"}`,
+	"5219616": `{"key":5219616,"rank":"SPECIES","canonicalName":"Erinaceus europaeus"}`,
 	"9703":    `{"key":9703,"rank":"FAMILY","canonicalName":"Felidae"}`,
 }
 
@@ -173,6 +178,7 @@ var vernaculars = map[string]string{
 	"2435240": `{"results":[{"vernacularName":"Eurasian lynx","language":"eng"},{"vernacularName":"Обыкновенная рысь","language":"rus"},{"vernacularName":"обыкновенная рысь","language":"rus"},{"vernacularName":"Рысь","language":"rus"}]}`,
 	"2435270": `{"results":[{"vernacularName":"Pallas's cat","language":"eng"},{"vernacularName":"Манул","language":"rus"}]}`,
 	"2435035": `{"results":[{"vernacularName":"Лесной кот","language":"rus"}]}`,
+	"5219616": `{"results":[{"vernacularName":"Обыкновенный ёж","language":"rus"}]}`,
 	"2435239": `{"results":[{"vernacularName":"Рыси","language":"rus"}]}`,
 	"2435268": `{"results":[]}`,
 	"2435022": `{"results":[{"vernacularName":"Кошки","language":"rus"}]}`,
