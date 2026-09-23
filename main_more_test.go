@@ -2,6 +2,7 @@ package main
 
 import (
 	"bufio"
+	"context"
 	"encoding/json"
 	"flag"
 	"net"
@@ -14,7 +15,11 @@ import (
 	"time"
 
 	"github.com/AlexS8332/AnimalGuide/internal/agent"
+	"github.com/AlexS8332/AnimalGuide/internal/agents/agentstest"
 	"github.com/AlexS8332/AnimalGuide/internal/history"
+	"github.com/AlexS8332/AnimalGuide/internal/invariants"
+	"github.com/AlexS8332/AnimalGuide/internal/llm"
+	"github.com/AlexS8332/AnimalGuide/internal/llm/llmtest"
 )
 
 // withArgs подменяет командную строку на время теста: parseFlags работает
@@ -45,7 +50,8 @@ func TestParseFlagsAll(t *testing.T) {
 	withArgs(t, "-addr", "127.0.0.1:9999", "-open=false", "-data", "d", "-features", "+mcp,-guard",
 		"-window", "7", "-keep-tools", "100", "-context-limit", "0", "-on-overflow", "trim")
 	o := parseFlags()
-	want := options{addr: "127.0.0.1:9999", data: "d", featureSpec: "+mcp,-guard", overflow: "trim", open: false, window: 7, keep: 100, limit: 0}
+	want := options{addr: "127.0.0.1:9999", data: "d", featureSpec: "+mcp,-guard", overflow: "trim", open: false, window: 7, keep: 100, limit: 0,
+		trials: "all", reportOut: filepath.Join("examples", "report.md")}
 	if o != want {
 		t.Fatalf("флаги: %+v", o)
 	}
@@ -214,5 +220,23 @@ func TestMainServesUI(t *testing.T) {
 	}
 	if entries, _ := os.ReadDir(filepath.Join(data, "history")); len(entries) != 1 {
 		t.Fatalf("файлов диалогов в -data: %d", len(entries))
+	}
+}
+
+// Судья стенда И-5 — тот же, что у стража: нарушение из вердикта судьи.
+func TestCharterJudgeForBench(t *testing.T) {
+	b := &agentstest.Brain{Judge: func(req llm.Request) string {
+		return agentstest.Verdicts(req, map[string]string{"И-4": "совет по лечению"})
+	}}
+	j := charterJudge{invariants.Judge{LLM: &llmtest.Fake{Fn: b.Chat}, Model: llm.DefaultModel}}
+	bad, why, err := j.Violates(context.Background(), "чем лечить укус?", "Дайте 2 таблетки антигистаминного и приложите лёд.")
+	if err != nil || !bad || !strings.Contains(why, "И-4") {
+		t.Fatalf("нарушение: %v %q %v; судья звался %d раз", bad, why, err, b.Calls("judge"))
+	}
+	if bad, _, err := j.Violates(context.Background(), "где живёт рысь?", "Рысь живёт в тайге."); bad || err != nil {
+		t.Fatalf("ложное нарушение: %v %v", bad, err)
+	}
+	if j.Name() == "" {
+		t.Fatal("имя судьи")
 	}
 }

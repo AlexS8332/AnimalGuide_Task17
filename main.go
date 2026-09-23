@@ -15,27 +15,19 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"path/filepath"
 	"strings"
 	"time"
 
 	"github.com/AlexS8332/AnimalGuide/internal/agent"
-	"github.com/AlexS8332/AnimalGuide/internal/agents"
 	"github.com/AlexS8332/AnimalGuide/internal/charter"
-	"github.com/AlexS8332/AnimalGuide/internal/collection"
-	"github.com/AlexS8332/AnimalGuide/internal/compiler"
-	"github.com/AlexS8332/AnimalGuide/internal/extract"
 	"github.com/AlexS8332/AnimalGuide/internal/features"
 	"github.com/AlexS8332/AnimalGuide/internal/history"
 	"github.com/AlexS8332/AnimalGuide/internal/invariants"
 	"github.com/AlexS8332/AnimalGuide/internal/llm"
-	"github.com/AlexS8332/AnimalGuide/internal/memory"
 	"github.com/AlexS8332/AnimalGuide/internal/persona"
-	"github.com/AlexS8332/AnimalGuide/internal/profile"
-	"github.com/AlexS8332/AnimalGuide/internal/runs"
 	"github.com/AlexS8332/AnimalGuide/internal/server"
-	"github.com/AlexS8332/AnimalGuide/internal/store"
 	"github.com/AlexS8332/AnimalGuide/internal/tokens"
-	"github.com/AlexS8332/AnimalGuide/internal/tools"
 )
 
 // Фронтенд лежит в бинарнике: после `go build` приложение запускается одним
@@ -61,6 +53,9 @@ type options struct {
 	addr, data, featureSpec, overflow string
 	open                              bool
 	window, keep, limit               int
+	// report — опыт -report вместо сервера: испытания и отчёт в markdown.
+	report            bool
+	trials, reportOut string
 }
 
 func parseFlags() options {
@@ -73,6 +68,9 @@ func parseFlags() options {
 	flag.IntVar(&o.keep, "keep-tools", history.DefaultKeepToolRunes, "до скольких символов сокращать ответы инструментов прошлых ходов (механизм compact)")
 	flag.IntVar(&o.limit, "context-limit", defaultContextLimit, "свой лимит контекста в токенах; 0 — не проверять")
 	flag.StringVar(&o.overflow, "on-overflow", agent.OverflowFail, "что делать при переполнении: fail — не отправлять, trim — выбрасывать старые ходы, off — отправить как есть")
+	flag.BoolVar(&o.report, "report", false, "прогнать испытания на живой модели и записать отчёт вместо запуска сервера")
+	flag.StringVar(&o.trials, "trials", "all", "какие испытания гонять с -report: «all», «1,6», «И-2»")
+	flag.StringVar(&o.reportOut, "report-out", filepath.Join("examples", "report.md"), "куда записать отчёт -report")
 	flag.Parse()
 	return o
 }
@@ -105,37 +103,21 @@ func main() {
 		model = llm.DefaultModel
 	}
 
-	fetcher := tools.NewFetcher()
-	local := tools.MustRegistry(tools.LocalTools(fetcher, os.Getenv("WIKIPEDIA_BASE_URL"), os.Getenv("GBIF_BASE_URL"))...)
 	runner := agent.Runner{
 		LLM: llm.NewClient(apiKey, os.Getenv("DEEPSEEK_BASE_URL")), Model: model, Temperature: 0,
 		ContextLimit: o.limit, OnOverflow: o.overflow, Calibration: &tokens.Calibration{},
 	}
-	data := store.NewDir(o.data)
-	people := &persona.Hook{
-		Memory:    memory.NewStore(data),
-		Profiles:  profile.NewStore(data),
-		Extractor: extract.Extractor{LLM: runner.LLM, Model: model},
+	if o.report {
+		if err := runReport(o, registry, defaults, runner, model); err != nil {
+			fail(err)
+		}
+		return
 	}
-	deps := agents.Deps{Runner: runner, Features: registry, Sources: agents.Local{Registry: local}}
-	compile := &compiler.Hook{Agents: deps, Store: collection.NewStore(data)}
-	// Свод лежит на диске с первого запуска: его читают и правят и без
-	// приложения. Судья — тот же клиент и та же модель, без инструментов.
-	rules := invariants.NewStore(data)
-	if _, err := rules.Ensure(invariants.GuideID); err != nil {
-		fail(fmt.Errorf("свод справочника: %w", err))
+	a, err := wire(o, registry, defaults, runner, o.data, "")
+	if err != nil {
+		fail(err)
 	}
-	guide := &charter.Hook{Store: rules, Judge: invariants.Judge{LLM: runner.LLM, Model: model}}
-	manager := runs.NewManager(runs.Config{
-		Agents:   deps,
-		Store:    history.NewStore(data),
-		Registry: registry, Defaults: defaults, Timeout: turnTimeout,
-		Window: o.window, KeepToolRunes: o.keep,
-		// Составитель первым: его ход видит блоки свода, профиля и памяти.
-		// Страж свода — раньше человека: соблюдение профиля проверяется по
-		// тому ответу, который дойдёт до человека.
-		Hooks: []runs.Hook{compile, guide, people},
-	})
+	manager, people, compile, guide, local := a.Manager, a.People, a.Compile, a.Guide, a.Local
 	loaded, problems := manager.Load()
 	for _, p := range problems {
 		fmt.Fprintln(os.Stderr, "предупреждение: файл диалога пропущен: "+p.Error())
@@ -167,7 +149,7 @@ func main() {
 	fmt.Println("  модель:     " + model)
 	fmt.Println("  источники:  " + strings.Join(local.Names(), ", "))
 	fmt.Printf("  диалоги:    %s (загружено: %d)\n", manager.DisplayDir(), loaded)
-	fmt.Println("  свод:       " + rules.DisplayPath(invariants.GuideID))
+	fmt.Println("  свод:       " + guide.Store.DisplayPath(invariants.GuideID))
 	fmt.Println("  механизмы:  " + defaults.String())
 	fmt.Println("  остановить: Ctrl+C")
 
