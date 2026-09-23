@@ -858,6 +858,95 @@ Object.assign(actions, {
   },
 });
 
+/* ---------- подборка: этапы, виды, права этапа ---------- */
+
+const stageTitle = { planning: 'план', collecting: 'сбор', validation: 'сверка', done: 'принята' };
+const stageOrder = ['planning', 'collecting', 'validation', 'done'];
+const itemMark = { pending: '○', done: '●', rework: '↺' };
+
+function stagesHTML(st) {
+  const at = stageOrder.indexOf(st.stage);
+  return `<div class="stages">${stageOrder.map((s, i) =>
+    `<span class="stage-step ${i < at ? 'past' : i === at ? 'now' : ''}">${esc(stageTitle[s])}</span>`).join('<span class="stage-arrow">→</span>')}
+    ${st.paused ? '<span class="chip warn">на паузе</span>' : ''}</div>`;
+}
+
+app.panels.collection = v => {
+  const st = v.state || {};
+  const items = (st.items || []).map(it =>
+    `<div class="item ${it.n === st.current && st.stage === 'collecting' ? 'current' : ''}" title="${esc(it.result || '')}">
+      ${itemMark[it.status] || '○'} ${it.n}. ${esc(it.name)}${it.output ? ` <button type="button" class="link" data-action="open" data-arg="${esc(it.output.card.name || it.name)}">карточка</button>` : ''}</div>`).join('');
+  const g = v.grant || {};
+  const locked = (g.locked || []).map(l =>
+    `<span class="chip warn" title="${esc(l.why)}${l.when ? '\nСтанет можно: ' + esc(l.when) : ''}">🔒 ${esc(l.tool)}</span>`).join('');
+  const tools = (g.tools || []).map(t => `<span class="chip ok">${esc(t)}</span>`).join('');
+  const report = st.report ? `<div class="hint">сверка: ${esc(st.report.summary || '')} — ${st.report.checks.filter(c => c.ok).length} из ${st.report.checks.length} сошлось</div>` : '';
+  return `<section class="panel wide" id="panel-collection"><h2>Подборка «${esc(st.title || '')}»
+      <button type="button" class="small" data-action="openWindow" data-arg="collections">все подборки</button>
+      <a class="small" href="/api/collections/${esc(st.id)}/export">выгрузить</a></h2>
+    ${v.enabled ? '' : '<div class="hint">состояние подборки выключено в этом диалоге — модель его не видит</div>'}
+    ${stagesHTML(st)}
+    <div class="hint">ждём: ${esc((v.expected || {}).text || '')}${st.goal ? ' · цель: ' + esc(st.goal) : ''}</div>
+    <div class="items">${items || '<span class="hint">плана ещё нет</span>'}</div>${report}
+    <div class="chips" title="${v.gated ? 'Права этапа: модели даны только эти инструменты' : 'Права этапа выключены: все инструменты сразу, правила — словами'}">
+      ${v.gated ? '' : '<span class="chip bad">права этапа выключены</span>'}${tools}${locked}</div>
+    <div class="hint">${esc(v.path || '')}${v.error ? ' · ' + esc(v.error) : ''}</div></section>`;
+};
+
+app.chips.collection = r => {
+  const out = [];
+  for (const c of r.changes || []) {
+    const text = c.rejected ? `отклонено: ${c.event} — ${c.reason}` :
+      c.from.stage === c.to.stage && !!c.from.paused === !!c.to.paused ? `подборка: ${c.event}` :
+      `подборка: ${stageTitle[c.from.stage]}${c.from.paused ? ' (пауза)' : ''} → ${stageTitle[c.to.stage]}${c.to.paused ? ' (пауза)' : ''}`;
+    out.push(`<span class="chip ${c.rejected ? 'warn' : 'ok'}" title="${esc([c.note, c.quote ? 'цитата: «' + c.quote + '»' : ''].filter(Boolean).join('\n'))}">📋 ${esc(text)}</span>`);
+  }
+  for (const w of r.works || []) out.push(`<span class="chip">📋 ${esc(w)}</span>`);
+  for (const d of r.denials || []) {
+    out.push(`<span class="chip bad" title="${esc(`Почему: ${d.reason}\nДоступно: ${d.available || '—'}\nЧто сделать: ${d.hint || '—'}`)}">🔒 нельзя: ${esc(d.what)}</span>`);
+  }
+  return out;
+};
+
+app.windows.collections = {
+  title: 'Подборки',
+  async render() {
+    const out = await api('GET', '/api/collections');
+    const list = out.collections || [];
+    let html = '<p class="hint">Подборка живёт в своём файле, а не в диалоге: её можно продолжить в любом диалоге — этап, виды и отказы сохранятся.</p>';
+    if (list.length) {
+      html += `<table class="grid"><tr><th>подборка</th><th>этап</th><th>видов</th><th>ждём</th><th></th></tr>${list.map(c =>
+        `<tr><td>${esc(c.title)}<div class="hint">${esc(c.path)}</div></td><td>${esc(stageTitle[c.stage] || c.stage)}${c.paused ? ' · пауза' : ''}</td>
+         <td>${c.done} из ${c.items}</td><td>${esc(c.expected.text)}</td>
+         <td><button type="button" class="small" data-action="continueCollection" data-arg="${esc(c.id)}"${app.conv ? '' : ' disabled'}>продолжить здесь</button>
+             <a class="small" href="/api/collections/${esc(c.id)}/export">выгрузить</a>
+             <button type="button" class="small" data-action="collectionFile" data-arg="${esc(c.id)}">файл</button></td></tr>`).join('')}</table>`;
+    } else {
+      html += '<p class="hint">Подборок нет. Начните с реплики «Собери подборку: хищники тайги, пять видов».</p>';
+    }
+    for (const p of out.problems || []) html += `<p class="hint">⚠ ${esc(p)}</p>`;
+    return html;
+  },
+};
+
+Object.assign(actions, {
+  async continueCollection(id) {
+    if (!app.conv) return;
+    try {
+      await api('POST', `/api/collections/${id}/continue`, { conversation: app.conv.id });
+      actions.closeWindow();
+      toast('Подборка подключена к диалогу');
+      loadConv(app.conv.id, true);
+    } catch (e) { toast(e.message, true); }
+  },
+  async collectionFile(id) {
+    try {
+      const f = await api('GET', '/api/collections/' + id);
+      $('window-body').innerHTML = `<p class="hint">${esc(f.path)}</p><pre>${esc(f.json)}</pre>`;
+    } catch (e) { toast(e.message, true); }
+  },
+});
+
 /* ---------- события DOM ---------- */
 
 document.addEventListener('click', ev => {

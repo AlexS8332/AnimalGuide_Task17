@@ -456,6 +456,19 @@ func (m *Manager) Switch(id, branch string) (Detail, error) {
 	return m.edit(id, func(c *history.Conversation) error { return c.Switch(branch) })
 }
 
+// SetCollection делает подборку текущей в диалоге: продолжить подборку —
+// значит сослаться на тот же файл, ничего не копируя (ФТ-28). Пустой
+// идентификатор — отложить подборку: она остаётся в своём файле.
+func (m *Manager) SetCollection(id, collectionID, title string) (Detail, error) {
+	if collectionID != "" && !paths.ValidHex(collectionID) {
+		return Detail{}, fmt.Errorf("некорректный идентификатор подборки %q", collectionID)
+	}
+	return m.edit(id, func(c *history.Conversation) error {
+		c.SetCollection(collectionID, title)
+		return nil
+	})
+}
+
 // SetFeature включает или выключает механизм диалога. Зависимости
 // проверяются: страж без свода не имеет смысла.
 func (m *Manager) SetFeature(id string, name features.Name, on bool) (Detail, error) {

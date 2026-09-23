@@ -57,6 +57,8 @@ button.link { border: none; background: none; padding: 0; color: var(--blue); te
 .panel.wide { min-width: 360px; flex: 1; }
 .panel h2 { font-size: 12px; text-transform: uppercase; letter-spacing: .6px; color: var(--muted); margin-bottom: 5px; }
 .ext-panels { display: contents; }
+#panel-branches { order: -2; }
+#panel-collection { order: -1; }
 
 .branch { display: flex; align-items: center; gap: 6px; padding: 2px 0; }
 .branch.active > .branch-name { font-weight: 700; color: var(--green); }
@@ -201,3 +203,13 @@ table.grid th { color: var(--muted); font-weight: 600; font-size: 12px; }
   .stage { grid-template-columns: 1fr; }
   .journal { position: static; max-height: 60vh; }
 }
+
+/* подборка */
+.stages { display: flex; flex-wrap: wrap; align-items: center; gap: 4px; margin: 2px 0 4px; }
+.stage-step { font-size: 12px; padding: 1px 8px; border-radius: 4px; border: 1px solid var(--line); color: var(--muted); }
+.stage-step.past { color: inherit; background: var(--green-soft); }
+.stage-step.now { color: inherit; font-weight: 600; border-color: var(--violet); background: var(--violet-soft); }
+.stage-arrow { color: var(--muted); font-size: 11px; }
+.items { display: flex; flex-wrap: wrap; gap: 2px 14px; font-size: 13px; margin: 2px 0 4px; }
+.items .item.current { font-weight: 600; }
+a.small { font-size: 12px; font-weight: normal; margin-left: 4px; text-transform: none; letter-spacing: 0; }

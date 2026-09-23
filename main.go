@@ -20,6 +20,8 @@ import (
 
 	"github.com/AlexS8332/AnimalGuide/internal/agent"
 	"github.com/AlexS8332/AnimalGuide/internal/agents"
+	"github.com/AlexS8332/AnimalGuide/internal/collection"
+	"github.com/AlexS8332/AnimalGuide/internal/compiler"
 	"github.com/AlexS8332/AnimalGuide/internal/extract"
 	"github.com/AlexS8332/AnimalGuide/internal/features"
 	"github.com/AlexS8332/AnimalGuide/internal/history"
@@ -113,12 +115,15 @@ func main() {
 		Profiles:  profile.NewStore(data),
 		Extractor: extract.Extractor{LLM: runner.LLM, Model: model},
 	}
+	deps := agents.Deps{Runner: runner, Features: registry, Sources: agents.Local{Registry: local}}
+	compile := &compiler.Hook{Agents: deps, Store: collection.NewStore(data)}
 	manager := runs.NewManager(runs.Config{
-		Agents:   agents.Deps{Runner: runner, Features: registry, Sources: agents.Local{Registry: local}},
+		Agents:   deps,
 		Store:    history.NewStore(data),
 		Registry: registry, Defaults: defaults, Timeout: turnTimeout,
 		Window: o.window, KeepToolRunes: o.keep,
-		Hooks: []runs.Hook{people},
+		// Составитель раньше человека: его ход видит блоки профиля и памяти.
+		Hooks: []runs.Hook{compile, people},
 	})
 	loaded, problems := manager.Load()
 	for _, p := range problems {
@@ -133,7 +138,7 @@ func main() {
 	for k, v := range persona.Meta() {
 		meta[k] = v
 	}
-	handler := server.New(manager, static, meta, people.Extension()...)
+	handler := server.New(manager, static, meta, append(people.Extension(), compile.Extension(manager)...)...)
 
 	listener, err := net.Listen("tcp", o.addr)
 	if err != nil {

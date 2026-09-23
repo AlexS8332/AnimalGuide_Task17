@@ -249,6 +249,7 @@ func TestBusyIsConflict(t *testing.T) {
 	id := out["conversationId"].(string)
 	code, _ := a.do(t, http.MethodPost, "/api/conversations/"+id+"/turns", `{"text":"ещё?"}`)
 	close(release)
+	a.stream(t, out["events"].(string))
 	if code != http.StatusConflict {
 		t.Fatalf("ход во время хода: %d", code)
 	}

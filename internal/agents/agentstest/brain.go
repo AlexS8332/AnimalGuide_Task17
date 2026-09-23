@@ -33,7 +33,9 @@ type Brain struct {
 	TextOnly bool
 	// Extract — ответ извлекателя памяти и профиля; пусто — «правок нет».
 	Extract func(req llm.Request) (string, error)
-	calls   map[string]int
+	// Compiler — ответы составителя подборки по шагам.
+	Compiler func(req llm.Request, step int) llm.Response
+	calls    map[string]int
 }
 
 func (b *Brain) count(who string) {
@@ -61,6 +63,18 @@ func LastUser(req llm.Request) string {
 		}
 	}
 	return ""
+}
+
+// TurnSteps — сколько ответов инструментов пришло после последней реплики
+// пользователя: шаг текущего хода, без истории окна.
+func TurnSteps(req llm.Request) int {
+	n := 0
+	for i := len(req.Messages) - 1; i >= 0 && req.Messages[i].Role != llm.RoleUser; i-- {
+		if req.Messages[i].Role == llm.RoleTool {
+			n++
+		}
+	}
+	return n
 }
 
 // ToolReplies — ответы инструментов запроса с их именами, без пометки
@@ -122,6 +136,12 @@ func (b *Brain) Chat(req llm.Request) (llm.Response, error) {
 	case strings.Contains(sys, "агент сравнения"):
 		b.count("comparer")
 		return b.comparer(req), nil
+	case strings.HasPrefix(sys, "Ты ведёшь подборку справочника"):
+		b.count("compiler")
+		if b.Compiler == nil {
+			return llmtest.Text("Подборка идёт."), nil
+		}
+		return b.Compiler(req, TurnSteps(req)), nil
 	case strings.HasPrefix(sys, "Ты ведёшь память и профиль"):
 		b.count("extract")
 		if b.Extract == nil {
