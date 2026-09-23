@@ -53,7 +53,8 @@ func TestLocalToolsAgainstFakes(t *testing.T) {
 	wiki, gbif := toolstest.NewWiki(), toolstest.NewGBIF()
 	defer wiki.Close()
 	defer gbif.Close()
-	reg := MustRegistry(LocalTools(NewFetcher(), wiki.URL, gbif.URL)...)
+	f := NewFetcher()
+	reg := MustRegistry(LocalTools(f, wiki.URL, gbif.URL)...)
 	call := func(name, args string) string {
 		t.Helper()
 		tl, ok := reg.Get(name)
@@ -77,5 +78,11 @@ func TestLocalToolsAgainstFakes(t *testing.T) {
 	}
 	if wiki.Calls.Load() == 0 || gbif.Calls.Load() == 0 {
 		t.Fatal("подставные источники не вызывались")
+	}
+	// Повтор берётся из кэша: в сеть запросов столько же, сколько дошло до
+	// подставных источников.
+	call("match_taxon", `{"scientific_name":"Lynx lynx"}`)
+	if got := f.Requests(); got != wiki.Calls.Load()+gbif.Calls.Load() {
+		t.Fatalf("запросов в сеть %d, до источников дошло %d", got, wiki.Calls.Load()+gbif.Calls.Load())
 	}
 }

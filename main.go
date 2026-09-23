@@ -51,6 +51,7 @@ const (
 // options — флаги запуска.
 type options struct {
 	addr, data, featureSpec, overflow string
+	mcpServer                         string
 	open                              bool
 	window, keep, limit               int
 	// report — опыт -report вместо сервера: испытания и отчёт в markdown.
@@ -67,6 +68,7 @@ func parseFlags() options {
 	flag.IntVar(&o.window, "window", history.DefaultWindow, "сколько последних сообщений уходит модели дословно (механизм window)")
 	flag.IntVar(&o.keep, "keep-tools", history.DefaultKeepToolRunes, "до скольких символов сокращать ответы инструментов прошлых ходов (механизм compact)")
 	flag.IntVar(&o.limit, "context-limit", defaultContextLimit, "свой лимит контекста в токенах; 0 — не проверять")
+	flag.StringVar(&o.mcpServer, "mcp-server", "", "бинарник MCP-сервера источников (механизм mcp); пусто — рядом с приложением, в PATH или сборка из исходников")
 	flag.StringVar(&o.overflow, "on-overflow", agent.OverflowFail, "что делать при переполнении: fail — не отправлять, trim — выбрасывать старые ходы, off — отправить как есть")
 	flag.BoolVar(&o.report, "report", false, "прогнать испытания на живой модели и записать отчёт вместо запуска сервера")
 	flag.StringVar(&o.trials, "trials", "all", "какие испытания гонять с -report: «all», «1,6», «И-2»")
@@ -135,6 +137,7 @@ func main() {
 	}
 	exts := append(people.Extension(), compile.Extension(manager)...)
 	exts = append(exts, guide.Extension()...)
+	exts = append(exts, a.Sources.Extension()...)
 	handler := server.New(manager, static, meta, exts...)
 
 	listener, err := net.Listen("tcp", o.addr)
@@ -151,6 +154,9 @@ func main() {
 	fmt.Printf("  диалоги:    %s (загружено: %d)\n", manager.DisplayDir(), loaded)
 	fmt.Println("  свод:       " + guide.Store.DisplayPath(invariants.GuideID))
 	fmt.Println("  механизмы:  " + defaults.String())
+	if defaults.On(features.MCP) {
+		fmt.Println("  MCP:        включён для новых диалогов; сервер запустится при первом ходе")
+	}
 	fmt.Println("  остановить: Ctrl+C")
 
 	errs := make(chan error, 1)
@@ -172,6 +178,7 @@ func main() {
 	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
 	defer cancel()
 	srv.Shutdown(ctx)
+	a.Close()
 	fmt.Println("Остановлено. Диалоги остались в " + manager.DisplayDir())
 }
 

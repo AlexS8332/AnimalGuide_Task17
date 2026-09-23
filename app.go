@@ -13,6 +13,7 @@ import (
 	"github.com/AlexS8332/AnimalGuide/internal/features"
 	"github.com/AlexS8332/AnimalGuide/internal/history"
 	"github.com/AlexS8332/AnimalGuide/internal/invariants"
+	"github.com/AlexS8332/AnimalGuide/internal/mcp"
 	"github.com/AlexS8332/AnimalGuide/internal/memory"
 	"github.com/AlexS8332/AnimalGuide/internal/persona"
 	"github.com/AlexS8332/AnimalGuide/internal/profile"
@@ -28,6 +29,13 @@ type app struct {
 	Compile *compiler.Hook
 	Guide   *charter.Hook
 	Local   *tools.Registry
+	// Fetcher — HTTP-клиент источников в процессе: стенд считает по нему
+	// запросы в сеть.
+	Fetcher *tools.Fetcher
+	// Sources — путь до источников на ход: в процессе или через MCP-сервер.
+	Sources *mcp.Switch
+	// Close гасит клиент и процесс MCP-сервера, если он запускался.
+	Close func()
 }
 
 // wire собирает менеджер ходов: источники, агенты и механизмы вокруг хода.
@@ -38,14 +46,26 @@ func wire(o options, registry *features.Registry, defaults features.Set, runner 
 	if wikiBase == "" {
 		wikiBase = os.Getenv("WIKIPEDIA_BASE_URL")
 	}
-	local := tools.MustRegistry(tools.LocalTools(tools.NewFetcher(), wikiBase, os.Getenv("GBIF_BASE_URL"))...)
+	fetcher := tools.NewFetcher()
+	localTools := tools.LocalTools(fetcher, wikiBase, os.Getenv("GBIF_BASE_URL"))
+	local := tools.MustRegistry(localTools...)
+	// Путь до источников выбирается на каждый ход по механизмам диалога:
+	// mcp выключен — вызов в процессе, включён — через MCP-сервер. Процесс
+	// сервера запускается при первом ходе с mcp, не раньше; адреса
+	// источников у него те же, что у вызова в процессе.
+	launcher := &mcp.Launcher{Path: o.mcpServer}
+	if wikiBase != "" {
+		launcher.Args = append(launcher.Args, "-wiki-base", wikiBase)
+	}
+	client := mcp.NewClient(mcp.Options{Dial: launcher.Dial, Want: tools.Fingerprint(localTools)})
+	sources := &mcp.Switch{Local: local, Client: client, How: launcher.How}
 	data := store.NewDir(dataDir)
 	people := &persona.Hook{
 		Memory:    memory.NewStore(data),
 		Profiles:  profile.NewStore(data),
 		Extractor: extract.Extractor{LLM: runner.LLM, Model: runner.Model},
 	}
-	deps := agents.Deps{Runner: runner, Features: registry, Sources: agents.Local{Registry: local}}
+	deps := agents.Deps{Runner: runner, Features: registry, Sources: sources}
 	compile := &compiler.Hook{Agents: deps, Store: collection.NewStore(data)}
 	// Свод лежит на диске с первого запуска: его читают и правят и без
 	// приложения. Судья — тот же клиент и та же модель, без инструментов.
@@ -64,5 +84,6 @@ func wire(o options, registry *features.Registry, defaults features.Set, runner 
 		// тому ответу, который дойдёт до человека.
 		Hooks: []runs.Hook{compile, guide, people},
 	})
-	return app{Manager: manager, People: people, Compile: compile, Guide: guide, Local: local}, nil
+	return app{Manager: manager, People: people, Compile: compile, Guide: guide, Local: local, Fetcher: fetcher,
+		Sources: sources, Close: func() { client.Close(); launcher.Close() }}, nil
 }

@@ -2,12 +2,12 @@ package agent
 
 import (
 	"context"
+	"crypto/sha256"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"strings"
 	"sync"
-	"sync/atomic"
 	"time"
 
 	"github.com/AlexS8332/AnimalGuide/internal/features"
@@ -103,7 +103,14 @@ type Preload struct {
 	Args string
 }
 
-var preloadCalls atomic.Int64
+// preloadID — id вызова кодом. Не счётчик: один и тот же вызов должен
+// давать те же байты запроса на любом пути до источника и в любом прогоне
+// (кэш префикса, сверка путей в И-7), а разные вызовы одного хода —
+// разные id («почему так» ищет событие по id).
+func preloadID(agent string, p Preload) string {
+	sum := sha256.Sum256([]byte(agent + "\x00" + p.Tool + "\x00" + p.Args))
+	return fmt.Sprintf("pre_%s_%x", p.Tool, sum[:6])
+}
 
 // Reply — итог прогона. Added — всё, что добавилось после истории:
 // сообщение пользователя, ответы модели, ответы инструментов, итоговый
@@ -210,7 +217,7 @@ func (r Runner) Run(ctx context.Context, spec Spec, in Prepared, em Emitter) (Re
 					Title: "вызов " + p.Tool + " кодом пропущен: у агента нет такого инструмента"})
 				continue
 			}
-			tc := llm.ToolCall{ID: fmt.Sprintf("pre_%s_%d", p.Tool, preloadCalls.Add(1)), Type: "function",
+			tc := llm.ToolCall{ID: preloadID(spec.Name, p), Type: "function",
 				Function: llm.FunctionCall{Name: p.Tool, Arguments: p.Args}}
 			call.ToolCalls = append(call.ToolCalls, tc)
 			stats.ToolCalls++

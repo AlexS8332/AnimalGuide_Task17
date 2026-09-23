@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"log/slog"
 	"strings"
 	"sync"
 	"testing"
@@ -19,6 +20,7 @@ import (
 	"github.com/AlexS8332/AnimalGuide/internal/history"
 	"github.com/AlexS8332/AnimalGuide/internal/llm"
 	"github.com/AlexS8332/AnimalGuide/internal/llm/llmtest"
+	"github.com/AlexS8332/AnimalGuide/internal/mcp"
 	"github.com/AlexS8332/AnimalGuide/internal/memory"
 	"github.com/AlexS8332/AnimalGuide/internal/persona"
 	"github.com/AlexS8332/AnimalGuide/internal/profile"
@@ -44,12 +46,19 @@ type rig struct {
 	// а стенд должен уметь мерить его и без него.
 	charter *charterHook
 	opens   int
+	t       *testing.T
+	// servers — MCP-серверы сборок, по одному на Open; hold — подстрока
+	// аргументов вызова, который сервер держит до своего убийства; noMCP —
+	// сборка не отдаёт стенду клиента MCP.
+	servers []*mcpRig
+	hold    string
+	noMCP   bool
 }
 
 func newRig(t *testing.T) *rig {
 	t.Helper()
 	r := &rig{brain: &agentstest.Brain{}, wiki: toolstest.NewWiki(), gbif: toolstest.NewGBIF(),
-		charter: &charterHook{text: map[string]string{}}}
+		charter: &charterHook{text: map[string]string{}}, t: t}
 	t.Cleanup(r.wiki.Close)
 	t.Cleanup(r.gbif.Close)
 	r.fake = &llmtest.Fake{Fn: r.chat}
@@ -92,7 +101,7 @@ func plain(req llm.Request, resp llm.Response) llm.Response {
 	return resp
 }
 
-func (r *rig) open(dir string, o Options) (*runs.Manager, error) {
+func (r *rig) open(dir string, o Options) (Build, error) {
 	r.opens++
 	wiki := r.wiki.URL
 	if o.WikiBase != "" {
@@ -100,14 +109,26 @@ func (r *rig) open(dir string, o Options) (*runs.Manager, error) {
 	}
 	reg := r.env.Registry
 	d := store.NewDir(dir)
+	// Путь до источников — как у приложения: переключатель по механизмам
+	// диалога, сервер MCP в памяти над теми же подставными источниками.
+	fetcher := tools.NewFetcher()
+	local := tools.LocalTools(fetcher, wiki, r.gbif.URL)
+	srv := &mcpRig{wiki: wiki, gbif: r.gbif.URL, hold: r.hold}
+	client := mcp.NewClient(mcp.Options{Dial: srv.dial, Want: tools.Fingerprint(local), Logger: slog.New(slog.DiscardHandler)})
+	r.t.Cleanup(func() { client.Close() })
+	r.servers = append(r.servers, srv)
 	deps := agents.Deps{Runner: agent.Runner{LLM: r.fake, Model: llm.DefaultModel, Calibration: &tokens.Calibration{}},
-		Features: reg, Sources: agents.Local{Registry: tools.MustRegistry(tools.LocalTools(tools.NewFetcher(), wiki, r.gbif.URL)...)}}
+		Features: reg, Sources: &mcp.Switch{Local: tools.MustRegistry(local...), Client: client}}
 	people := &persona.Hook{Memory: memory.NewStore(d), Profiles: profile.NewStore(d),
 		Extractor: extract.Extractor{LLM: r.fake, Model: llm.DefaultModel}}
 	compile := &compiler.Hook{Agents: deps, Store: collection.NewStore(d)}
 	m := runs.NewManager(runs.Config{Agents: deps, Store: history.NewStore(d), Registry: reg, Defaults: reg.Defaults(),
 		Timeout: time.Minute, Hooks: []runs.Hook{compile, people, &charterDir{h: r.charter, dir: dir}}})
-	return m, nil
+	b := Build{Manager: m, HTTP: fetcher.Requests}
+	if !r.noMCP {
+		b.MCP = rigClient{Client: client, srv: srv}
+	}
+	return b, nil
 }
 
 // charterHook — подставной свод: у каждого каталога свой текст.
@@ -319,9 +340,13 @@ func TestStandErrors(t *testing.T) {
 	if _, err := env.NewStand("x", Options{}); err == nil {
 		t.Fatal("стенд без сборки менеджера")
 	}
-	env.Open = func(string, Options) (*runs.Manager, error) { return nil, errors.New("сборка") }
+	env.Open = func(string, Options) (Build, error) { return Build{}, errors.New("сборка") }
 	if _, err := env.NewStand("x", Options{}); err == nil {
 		t.Fatal("ошибка сборки")
+	}
+	env.Open = func(string, Options) (Build, error) { return Build{}, nil }
+	if _, err := env.NewStand("x", Options{}); err == nil {
+		t.Fatal("сборка без менеджера")
 	}
 	res := RunOne(context.Background(), &env, NewMemory())
 	if res.Err == "" || res.Verdict() != Fail {

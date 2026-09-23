@@ -30,6 +30,7 @@ import (
 	"github.com/AlexS8332/AnimalGuide/internal/collection"
 	"github.com/AlexS8332/AnimalGuide/internal/features"
 	"github.com/AlexS8332/AnimalGuide/internal/history"
+	"github.com/AlexS8332/AnimalGuide/internal/mcp"
 	"github.com/AlexS8332/AnimalGuide/internal/profile"
 	"github.com/AlexS8332/AnimalGuide/internal/runs"
 	"github.com/AlexS8332/AnimalGuide/internal/store"
@@ -125,6 +126,25 @@ type Options struct {
 	WikiBase string
 }
 
+// MCPClient — клиент MCP-сервера сборки, как его видит стенд (И-7): убить
+// процесс посреди хода, снять счётчики клиента и самого сервера.
+type MCPClient interface {
+	Kill() error
+	State() mcp.State
+	ServerInfo(ctx context.Context) (*mcp.Info, error)
+}
+
+// Build — собранное приложение над каталогом стенда: менеджер ходов и то,
+// что испытаниям нужно видеть помимо него.
+type Build struct {
+	Manager *runs.Manager
+	// MCP — клиент MCP-сервера этой сборки; nil — сборка без MCP.
+	MCP MCPClient
+	// HTTP — сколько HTTP-запросов к источникам ушло в сеть из процесса
+	// приложения; nil — не считается.
+	HTTP func() int64
+}
+
 // Env — всё, что стенду нужно от приложения. Сборку менеджера (агенты,
 // хуки, источники) делает приложение: стенд не знает, какие механизмы
 // висят вокруг хода, и потому гоняет ровно то, что увидит человек.
@@ -134,9 +154,9 @@ type Env struct {
 	Base features.Set
 	// Root — каталог прогона; у каждого испытания в нём свой подкаталог.
 	Root string
-	// Open собирает менеджер над каталогом данных. Повторный вызов на том
+	// Open собирает приложение над каталогом данных. Повторный вызов на том
 	// же каталоге — перезапуск сервера.
-	Open func(dir string, o Options) (*runs.Manager, error)
+	Open func(dir string, o Options) (Build, error)
 	// Legacy — каталог памятников прошлых форматов (testdata/legacy).
 	Legacy string
 	Model  string
@@ -176,6 +196,7 @@ type Stand struct {
 	dir  string
 	opts Options
 	m    *runs.Manager
+	b    Build
 	rec  *recorder
 
 	Profiles    *profile.Store
@@ -194,12 +215,15 @@ func (e *Env) stand(dir string, o Options, rec *recorder) (*Stand, error) {
 	if err := os.MkdirAll(dir, 0o755); err != nil {
 		return nil, err
 	}
-	m, err := e.Open(dir, o)
+	b, err := e.Open(dir, o)
 	if err != nil {
 		return nil, err
 	}
+	if b.Manager == nil {
+		return nil, errors.New("сборка не вернула менеджер ходов")
+	}
 	d := store.NewDir(dir)
-	return &Stand{env: e, dir: dir, opts: o, m: m, rec: rec,
+	return &Stand{env: e, dir: dir, opts: o, m: b.Manager, b: b, rec: rec,
 		Profiles: profile.NewStore(d), Collections: collection.NewStore(d)}, nil
 }
 
@@ -212,20 +236,35 @@ func (s *Stand) Sub(name string, o Options) (*Stand, error) {
 // Manager — менеджер стенда.
 func (s *Stand) Manager() *runs.Manager { return s.m }
 
+// MCP — клиент MCP-сервера сборки стенда; nil — сборка без MCP.
+func (s *Stand) MCP() MCPClient { return s.b.MCP }
+
+// HTTP — запросов к источникам из процесса приложения; -1 — не считается.
+func (s *Stand) HTTP() int64 {
+	if s.b.HTTP == nil {
+		return -1
+	}
+	return s.b.HTTP()
+}
+
 // Dir — каталог данных стенда.
 func (s *Stand) Dir() string { return s.dir }
 
 // Restart — перезапуск сервера посреди испытания: новый менеджер на том же
 // каталоге поднимает диалоги и стенды с диска.
 func (s *Stand) Restart() error {
-	m, err := s.env.Open(s.dir, s.opts)
+	b, err := s.env.Open(s.dir, s.opts)
 	if err != nil {
 		return err
 	}
+	if b.Manager == nil {
+		return errors.New("сборка не вернула менеджер ходов")
+	}
+	m := b.Manager
 	if _, problems := m.Load(); len(problems) > 0 {
 		return fmt.Errorf("после перезапуска не поднялись диалоги: %v", problems)
 	}
-	s.m = m
+	s.m, s.b = m, b
 	return nil
 }
 
@@ -322,6 +361,14 @@ func (st Step) OK() bool { return st.Turn.Status == history.TurnDone }
 // каждая своим диалогом, но всё равно в ногу: ответа ждём от всех, прежде
 // чем вернуть.
 func (g *Group) Send(ctx context.Context, req agents.Request) ([]Step, error) {
+	return g.SendWatch(ctx, req, nil)
+}
+
+// SendWatch — то же, что Send, но каждый начатый ход сначала отдаётся
+// watch: испытание может следить за журналом хода, пока он идёт (И-7
+// убивает MCP-сервер на первом вызове источника). watch не должен
+// блокироваться: за журналом он следит своей горутиной.
+func (g *Group) SendWatch(ctx context.Context, req agents.Request, watch func(lane string, sess *runs.Session)) ([]Step, error) {
 	m := g.s.m
 	moved := false
 	for _, d := range g.Dialogs {
@@ -341,6 +388,11 @@ func (g *Group) Send(ctx context.Context, req agents.Request) ([]Step, error) {
 				return nil, fmt.Errorf("дорожка «%s»: %w", d.Lane.Name, err)
 			}
 			sessions = append(sessions, sess)
+		}
+	}
+	if watch != nil {
+		for i, sess := range sessions {
+			watch(g.Dialogs[i].Lane.Name, sess)
 		}
 	}
 	out := make([]Step, len(sessions))

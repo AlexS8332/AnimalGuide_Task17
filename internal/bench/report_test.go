@@ -25,22 +25,24 @@ func TestMarkdownReport(t *testing.T) {
 	cost.Long = []string{"Привет! Меня зовут Алекс.", "Где живёт рысь?"}
 	cost.Mechanisms = []features.Name{features.Charter}
 	price := r.run(t, cost)
-	mcp := r.run(t, &MCP{})
+	r.hold = "полосат"
+	mcp := r.run(t, shortMCP())
+	skipped := &Result{ID: "И-8", Title: "пропущенное", Skipped: "механизма «x» нет в реестре"}
 	broken := &Result{ID: "И-9", Title: "сломанное", Err: "диалог пропал", Checks: []Check{{What: "x", Status: Pending}},
 		Notes:   []string{"a | b"},
 		Samples: []Sample{{Topic: "ответ", Lane: "основная", User: "вопрос", Reply: "Рысь | ест зайцев.\n```код```", Note: "пометка"}}}
 
 	md := Markdown(Meta{Model: llm.DefaultModel, Started: time.Date(2026, 9, 23, 12, 0, 0, 0, time.UTC), Elapsed: 90 * time.Second,
-		Registry: r.env.Registry, Samples: 1}, []*Result{facts, price, mcp, broken})
+		Registry: r.env.Registry, Samples: 1}, []*Result{facts, price, mcp, skipped, broken})
 	for _, want := range []string{
 		"# Регрессионный набор испытаний", "`" + llm.DefaultModel + "`", "2026-09-23 12:00", "1m30s",
 		"## Сводка", "| И-1. Достоверность | `card.tracker` | 5 из 5 | ✓ принято |",
-		"| И-7. MCP: тот же путь до источников | — | — | ? не гонялось |", "✗ стенд сломался",
+		"| И-7. MCP: тот же путь до источников | `mcp` |", "| И-8. пропущенное | — | — | ? не гонялось |", "✗ стенд сломался",
 		"### Дорожки", "| **без трекера** | −card.tracker |",
 		"### Проверки", "| ✓ | настоящие опознаны | основная | 2 из 2 | 2 из 2 |",
 		"### Отчётные числа", "### Цена и разбивка запроса", "**постоянная часть**", "блок «Свод инвариантов»",
 		"калибровка: ошибка без поправки / после", "из кэша | 70 %",
-		"### Что получил человек", "…и ещё ответов", "Не гонялось: механизма «mcp» нет", "**Стенд сломался:** диалог пропал",
+		"### Что получил человек", "…и ещё ответов", "Не гонялось: механизма «x» нет", "| **A: через MCP** | +mcp |", "холодный старт сервера", "**Стенд сломался:** диалог пропал",
 		"| значение |", "памятник history/",
 	} {
 		if !strings.Contains(md, want) {
@@ -59,6 +61,7 @@ func TestMarkdownReport(t *testing.T) {
 // умолчанию — все механизмы реестра с блоком.
 func TestRunAll(t *testing.T) {
 	r := newRig(t)
+	r.noMCP = true
 	out := Run(context.Background(), r.env, []Trial{&MCP{}, stubTrial{}})
 	if len(out) != 2 || out[0].Skipped == "" || out[1].Verdict() != Pass {
 		t.Fatalf("прогон: %+v", out)
