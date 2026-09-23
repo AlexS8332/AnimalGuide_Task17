@@ -135,7 +135,8 @@ func Run(ctx context.Context, d Deps, req Request, em agent.Emitter) (Result, er
 		em = agent.Nop{}
 	}
 	fs := req.Features
-	reg, effective, why, err := d.Sources.For(ctx, fs)
+	// Путь до источников пишет в журнал хода, как подключился.
+	reg, effective, why, err := d.Sources.For(agent.WithEmitter(ctx, em), fs)
 	if err != nil {
 		return Result{}, fmt.Errorf("инструменты источников: %w", err)
 	}

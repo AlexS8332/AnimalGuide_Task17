@@ -443,3 +443,17 @@ func TestEmitters(t *testing.T) {
 	Nop{}.Log(Event{})
 	Nop{}.Publish(Update{})
 }
+
+func TestEmitterInContext(t *testing.T) {
+	if _, ok := EmitterFrom(context.Background()).(Nop); !ok {
+		t.Fatal("без журнала в контексте — не Nop")
+	}
+	rec := &Recorder{}
+	EmitterFrom(WithEmitter(context.Background(), rec)).Log(Event{Kind: EventNote})
+	if len(rec.Events) != 1 {
+		t.Fatal("журнал из контекста не тот")
+	}
+	if _, ok := EmitterFrom(WithEmitter(context.Background(), nil)).(Nop); !ok {
+		t.Fatal("nil в контексте — не Nop")
+	}
+}

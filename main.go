@@ -26,6 +26,7 @@ import (
 	"github.com/AlexS8332/AnimalGuide/internal/features"
 	"github.com/AlexS8332/AnimalGuide/internal/history"
 	"github.com/AlexS8332/AnimalGuide/internal/llm"
+	"github.com/AlexS8332/AnimalGuide/internal/mcp"
 	"github.com/AlexS8332/AnimalGuide/internal/memory"
 	"github.com/AlexS8332/AnimalGuide/internal/persona"
 	"github.com/AlexS8332/AnimalGuide/internal/profile"
@@ -57,6 +58,7 @@ const (
 // options — флаги запуска.
 type options struct {
 	addr, data, featureSpec, overflow string
+	mcpServer                         string
 	open                              bool
 	window, keep, limit               int
 }
@@ -70,6 +72,7 @@ func parseFlags() options {
 	flag.IntVar(&o.window, "window", history.DefaultWindow, "сколько последних сообщений уходит модели дословно (механизм window)")
 	flag.IntVar(&o.keep, "keep-tools", history.DefaultKeepToolRunes, "до скольких символов сокращать ответы инструментов прошлых ходов (механизм compact)")
 	flag.IntVar(&o.limit, "context-limit", defaultContextLimit, "свой лимит контекста в токенах; 0 — не проверять")
+	flag.StringVar(&o.mcpServer, "mcp-server", "", "бинарник MCP-сервера источников (механизм mcp); пусто — рядом с приложением, в PATH или сборка из исходников")
 	flag.StringVar(&o.overflow, "on-overflow", agent.OverflowFail, "что делать при переполнении: fail — не отправлять, trim — выбрасывать старые ходы, off — отправить как есть")
 	flag.Parse()
 	return o
@@ -104,7 +107,15 @@ func main() {
 	}
 
 	fetcher := tools.NewFetcher()
-	local := tools.MustRegistry(tools.LocalTools(fetcher, os.Getenv("WIKIPEDIA_BASE_URL"), os.Getenv("GBIF_BASE_URL"))...)
+	localTools := tools.LocalTools(fetcher, os.Getenv("WIKIPEDIA_BASE_URL"), os.Getenv("GBIF_BASE_URL"))
+	local := tools.MustRegistry(localTools...)
+	// Путь до источников выбирается на каждый ход по механизмам диалога:
+	// mcp выключен — вызов в процессе, включён — через MCP-сервер. Процесс
+	// сервера запускается при первом ходе с mcp, не раньше. Адреса
+	// источников сервер берёт из тех же переменных окружения.
+	launcher := &mcp.Launcher{Path: o.mcpServer}
+	mcpClient := mcp.NewClient(mcp.Options{Dial: launcher.Dial, Want: tools.Fingerprint(localTools)})
+	sources := &mcp.Switch{Local: local, Client: mcpClient, How: launcher.How}
 	runner := agent.Runner{
 		LLM: llm.NewClient(apiKey, os.Getenv("DEEPSEEK_BASE_URL")), Model: model, Temperature: 0,
 		ContextLimit: o.limit, OnOverflow: o.overflow, Calibration: &tokens.Calibration{},
@@ -115,7 +126,7 @@ func main() {
 		Profiles:  profile.NewStore(data),
 		Extractor: extract.Extractor{LLM: runner.LLM, Model: model},
 	}
-	deps := agents.Deps{Runner: runner, Features: registry, Sources: agents.Local{Registry: local}}
+	deps := agents.Deps{Runner: runner, Features: registry, Sources: sources}
 	compile := &compiler.Hook{Agents: deps, Store: collection.NewStore(data)}
 	manager := runs.NewManager(runs.Config{
 		Agents:   deps,
@@ -138,7 +149,8 @@ func main() {
 	for k, v := range persona.Meta() {
 		meta[k] = v
 	}
-	handler := server.New(manager, static, meta, append(people.Extension(), compile.Extension(manager)...)...)
+	exts := append(people.Extension(), compile.Extension(manager)...)
+	handler := server.New(manager, static, meta, append(exts, sources.Extension()...)...)
 
 	listener, err := net.Listen("tcp", o.addr)
 	if err != nil {
@@ -153,6 +165,9 @@ func main() {
 	fmt.Println("  источники:  " + strings.Join(local.Names(), ", "))
 	fmt.Printf("  диалоги:    %s (загружено: %d)\n", manager.DisplayDir(), loaded)
 	fmt.Println("  механизмы:  " + defaults.String())
+	if defaults.On(features.MCP) {
+		fmt.Println("  MCP:        включён для новых диалогов; сервер запустится при первом ходе")
+	}
 	fmt.Println("  остановить: Ctrl+C")
 
 	errs := make(chan error, 1)
@@ -174,6 +189,8 @@ func main() {
 	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
 	defer cancel()
 	srv.Shutdown(ctx)
+	mcpClient.Close()
+	launcher.Close()
 	fmt.Println("Остановлено. Диалоги остались в " + manager.DisplayDir())
 }
 

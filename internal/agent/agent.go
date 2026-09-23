@@ -8,6 +8,7 @@
 package agent
 
 import (
+	"context"
 	"time"
 
 	"github.com/AlexS8332/AnimalGuide/internal/llm"
@@ -87,6 +88,23 @@ type Update struct {
 type Emitter interface {
 	Log(Event)
 	Publish(Update)
+}
+
+type emitterKey struct{}
+
+// WithEmitter кладёт журнал хода в контекст. Нужен тем, кто работает на
+// границе хода и не получает эмиттер параметром: реализация пути до
+// источников пишет в журнал, как подключилась, не расширяя интерфейс.
+func WithEmitter(ctx context.Context, em Emitter) context.Context {
+	return context.WithValue(ctx, emitterKey{}, em)
+}
+
+// EmitterFrom — журнал хода из контекста; Nop, если его там нет.
+func EmitterFrom(ctx context.Context) Emitter {
+	if em, ok := ctx.Value(emitterKey{}).(Emitter); ok && em != nil {
+		return em
+	}
+	return Nop{}
 }
 
 // Nop — эмиттер, который всё отбрасывает.

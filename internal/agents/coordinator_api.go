@@ -24,7 +24,8 @@ func NewCoordinator(ctx context.Context, d Deps, req Request, em agent.Emitter) 
 	if em == nil {
 		em = agent.Nop{}
 	}
-	reg, effective, why, err := d.Sources.For(ctx, req.Features)
+	// Путь до источников пишет в журнал хода, как подключился.
+	reg, effective, why, err := d.Sources.For(agent.WithEmitter(ctx, em), req.Features)
 	if err != nil {
 		return nil, fmt.Errorf("инструменты источников: %w", err)
 	}

@@ -209,3 +209,18 @@ func TestDescribeAndLabels(t *testing.T) {
 		t.Fatal("Get")
 	}
 }
+
+// MCP — транспорт: нового блока нет, модель ничего не платит, по
+// умолчанию выключен, пока не прошёл своё испытание.
+func TestMCPIsTransport(t *testing.T) {
+	m, ok := Catalog().Get(MCP)
+	if !ok || m.Default || m.Place != PlaceNone || !m.Kind.Has(KindTransport) || m.Kind.Has(KindBlock) {
+		t.Fatalf("mcp: %+v", m)
+	}
+	if m.Cost.Tokens != 0 || m.Cost.Requests != 0 || m.Cost.Churn != ChurnNone || m.Cost.Note == "" || m.Fallback == "" {
+		t.Fatalf("цена mcp: %+v", m.Cost)
+	}
+	if Catalog().Defaults().On(MCP) {
+		t.Fatal("mcp включён у нового диалога")
+	}
+}
