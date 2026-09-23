@@ -20,11 +20,13 @@ import (
 
 	"github.com/AlexS8332/AnimalGuide/internal/agent"
 	"github.com/AlexS8332/AnimalGuide/internal/agents"
+	"github.com/AlexS8332/AnimalGuide/internal/charter"
 	"github.com/AlexS8332/AnimalGuide/internal/collection"
 	"github.com/AlexS8332/AnimalGuide/internal/compiler"
 	"github.com/AlexS8332/AnimalGuide/internal/extract"
 	"github.com/AlexS8332/AnimalGuide/internal/features"
 	"github.com/AlexS8332/AnimalGuide/internal/history"
+	"github.com/AlexS8332/AnimalGuide/internal/invariants"
 	"github.com/AlexS8332/AnimalGuide/internal/llm"
 	"github.com/AlexS8332/AnimalGuide/internal/memory"
 	"github.com/AlexS8332/AnimalGuide/internal/persona"
@@ -117,13 +119,22 @@ func main() {
 	}
 	deps := agents.Deps{Runner: runner, Features: registry, Sources: agents.Local{Registry: local}}
 	compile := &compiler.Hook{Agents: deps, Store: collection.NewStore(data)}
+	// Свод лежит на диске с первого запуска: его читают и правят и без
+	// приложения. Судья — тот же клиент и та же модель, без инструментов.
+	rules := invariants.NewStore(data)
+	if _, err := rules.Ensure(invariants.GuideID); err != nil {
+		fail(fmt.Errorf("свод справочника: %w", err))
+	}
+	guide := &charter.Hook{Store: rules, Judge: invariants.Judge{LLM: runner.LLM, Model: model}}
 	manager := runs.NewManager(runs.Config{
 		Agents:   deps,
 		Store:    history.NewStore(data),
 		Registry: registry, Defaults: defaults, Timeout: turnTimeout,
 		Window: o.window, KeepToolRunes: o.keep,
-		// Составитель раньше человека: его ход видит блоки профиля и памяти.
-		Hooks: []runs.Hook{compile, people},
+		// Составитель первым: его ход видит блоки свода, профиля и памяти.
+		// Страж свода — раньше человека: соблюдение профиля проверяется по
+		// тому ответу, который дойдёт до человека.
+		Hooks: []runs.Hook{compile, guide, people},
 	})
 	loaded, problems := manager.Load()
 	for _, p := range problems {
@@ -135,10 +146,14 @@ func main() {
 		fail(fmt.Errorf("встроенный фронтенд не читается: %w", err))
 	}
 	meta := map[string]any{"model": model, "window": o.window, "contextLimit": o.limit}
-	for k, v := range persona.Meta() {
-		meta[k] = v
+	for _, m := range []map[string]any{persona.Meta(), charter.Meta()} {
+		for k, v := range m {
+			meta[k] = v
+		}
 	}
-	handler := server.New(manager, static, meta, append(people.Extension(), compile.Extension(manager)...)...)
+	exts := append(people.Extension(), compile.Extension(manager)...)
+	exts = append(exts, guide.Extension()...)
+	handler := server.New(manager, static, meta, exts...)
 
 	listener, err := net.Listen("tcp", o.addr)
 	if err != nil {
@@ -152,6 +167,7 @@ func main() {
 	fmt.Println("  модель:     " + model)
 	fmt.Println("  источники:  " + strings.Join(local.Names(), ", "))
 	fmt.Printf("  диалоги:    %s (загружено: %d)\n", manager.DisplayDir(), loaded)
+	fmt.Println("  свод:       " + rules.DisplayPath(invariants.GuideID))
 	fmt.Println("  механизмы:  " + defaults.String())
 	fmt.Println("  остановить: Ctrl+C")
 

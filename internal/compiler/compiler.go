@@ -169,10 +169,12 @@ func (h *Hook) run(ctx context.Context, t *runs.Turn, id, title string) (agents.
 			list = append(list, lifecycle.Guard(ld, src))
 		}
 	}
+	list = append(list, t.Request.Tools...)
 	sys := system
 	if !gated {
 		sys += "\n\n" + lifecycle.PlainRules
 	}
+	sys = t.Request.System(sys)
 	t.Em.Log(agent.Event{Agent: Name, Kind: agent.EventNote,
 		Title:  fmt.Sprintf("подборка «%s»: %s (ход подборки %d)", title, before.Summary(), before.Turn),
 		Detail: "Права хода: " + strings.Join(append(append([]string{}, grant.Tools...), grant.Sources...), ", ")})
