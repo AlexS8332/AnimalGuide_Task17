@@ -947,6 +947,20 @@ Object.assign(actions, {
   },
 });
 
+/* ---------- вёрстка: высота пульта ---------- */
+
+// Журнал липнет под пультом, а высота пульта меняется: панели механизмов
+// появляются и пропадают, строка показаний переносится. Жёсткий отступ
+// прятал верх журнала под пульт — меряем пульт и отдаём высоту в CSS.
+function trackPultHeight() {
+  const pult = $('pult');
+  const apply = () => document.documentElement.style.setProperty('--pult-h', Math.ceil(pult.getBoundingClientRect().height) + 'px');
+  apply();
+  if (window.ResizeObserver) new ResizeObserver(apply).observe(pult);
+  else window.addEventListener('resize', apply);
+}
+trackPultHeight();
+
 /* ---------- события DOM ---------- */
 
 document.addEventListener('click', ev => {
