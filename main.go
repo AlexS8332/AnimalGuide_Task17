@@ -20,9 +20,13 @@ import (
 
 	"github.com/AlexS8332/AnimalGuide/internal/agent"
 	"github.com/AlexS8332/AnimalGuide/internal/agents"
+	"github.com/AlexS8332/AnimalGuide/internal/extract"
 	"github.com/AlexS8332/AnimalGuide/internal/features"
 	"github.com/AlexS8332/AnimalGuide/internal/history"
 	"github.com/AlexS8332/AnimalGuide/internal/llm"
+	"github.com/AlexS8332/AnimalGuide/internal/memory"
+	"github.com/AlexS8332/AnimalGuide/internal/persona"
+	"github.com/AlexS8332/AnimalGuide/internal/profile"
 	"github.com/AlexS8332/AnimalGuide/internal/runs"
 	"github.com/AlexS8332/AnimalGuide/internal/server"
 	"github.com/AlexS8332/AnimalGuide/internal/store"
@@ -104,11 +108,17 @@ func main() {
 		ContextLimit: o.limit, OnOverflow: o.overflow, Calibration: &tokens.Calibration{},
 	}
 	data := store.NewDir(o.data)
+	people := &persona.Hook{
+		Memory:    memory.NewStore(data),
+		Profiles:  profile.NewStore(data),
+		Extractor: extract.Extractor{LLM: runner.LLM, Model: model},
+	}
 	manager := runs.NewManager(runs.Config{
 		Agents:   agents.Deps{Runner: runner, Features: registry, Sources: agents.Local{Registry: local}},
 		Store:    history.NewStore(data),
 		Registry: registry, Defaults: defaults, Timeout: turnTimeout,
 		Window: o.window, KeepToolRunes: o.keep,
+		Hooks: []runs.Hook{people},
 	})
 	loaded, problems := manager.Load()
 	for _, p := range problems {
@@ -119,7 +129,11 @@ func main() {
 	if err != nil {
 		fail(fmt.Errorf("встроенный фронтенд не читается: %w", err))
 	}
-	handler := server.New(manager, static, map[string]any{"model": model, "window": o.window, "contextLimit": o.limit})
+	meta := map[string]any{"model": model, "window": o.window, "contextLimit": o.limit}
+	for k, v := range persona.Meta() {
+		meta[k] = v
+	}
+	handler := server.New(manager, static, meta, people.Extension()...)
 
 	listener, err := net.Listen("tcp", o.addr)
 	if err != nil {

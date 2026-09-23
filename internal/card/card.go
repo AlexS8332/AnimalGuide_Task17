@@ -226,6 +226,24 @@ func (c *Card) Done(key string) bool {
 	return s != nil && (s.Status == SectionRead || s.Status == SectionNone)
 }
 
+// reservedKeys — сведения о животных, которыми ведает карточка. Их источник
+// — трекер вызовов, а не реплики, поэтому ни память, ни карточка фактов их
+// не пишут (И-1 свода, ИП-4, ИП-14).
+var reservedKeys = []string{"латынь", "латинское название", "ареал", "питание", "рацион", "размер", "размеры",
+	"вес", "масса", "длина тела", "статус охраны", "охранный статус", "классификация", "семейство", "отряд",
+	"род", "вид", "размножение", "образ жизни", "среда обитания"}
+
+// Reserved — ведает ли ключом карточка животного.
+func Reserved(key string) bool {
+	k := strings.ReplaceAll(strings.ToLower(strings.TrimSpace(key)), "ё", "е")
+	for _, r := range reservedKeys {
+		if k == r || strings.HasPrefix(k, r+" ") {
+			return true
+		}
+	}
+	return false
+}
+
 // IDOf — ключ карточки по ключу таксона.
 func IDOf(taxonKey int) string { return strconv.Itoa(taxonKey) }
 

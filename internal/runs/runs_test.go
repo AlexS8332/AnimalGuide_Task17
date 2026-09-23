@@ -232,7 +232,9 @@ func (h testHook) After(_ context.Context, t *Turn) error {
 	}
 	return h.after(t)
 }
-func (h testHook) Describe(c *history.Conversation) any { return map[string]int{"owners": len(c.Owners)} }
+func (h testHook) Describe(c *history.Conversation) any {
+	return map[string]int{"owners": len(c.Owners)}
+}
 
 func TestHooksBlocksHandlerAndSurvival(t *testing.T) {
 	r := newRig(t)

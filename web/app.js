@@ -398,7 +398,7 @@ function cardHTML(c) {
   const rank = c.rankRu || (c.rank || '').toLowerCase();
   let html = `<article class="acard${c.unverified ? ' unverified' : ''}" data-card="${esc(c.id)}">
     <div class="acard-head"><h3>${esc(c.name)}</h3>
-      <span class="latin">${esc(c.latin)}</span>${whyBtn(c.latinWhy)}
+      ${latinHidden() ? `<span class="hint" title="${esc(c.latin)}">латынь скрыта профилем</span>` : `<span class="latin">${esc(c.latin)}</span>`}${whyBtn(c.latinWhy)}
       ${rank ? `<span class="rank">${esc(rank)}</span>` : ''}
     </div>
     <p class="summary">${esc(c.summary)} ${whyBtn(c.summaryWhy)}</p>`;
@@ -435,7 +435,8 @@ function cardHTML(c) {
   if (c.notes && c.notes.length) html += '<ul class="notes">' + c.notes.map(n => `<li>${esc(n)}</li>`).join('') + '</ul>';
   html += `<div class="sources">Источники: ${(c.sources || []).map(s => `<a href="${esc(s.url)}" target="_blank" rel="noopener">${esc(s.title)}</a>`).join(' · ')}
     <button type="button" class="small" data-action="export" data-kind="card" data-arg="${esc(c.id)}">↓ markdown</button>
-    <button type="button" class="small" data-action="compareWith" data-arg="${esc(c.name)}" title="Сравнение уйдёт в отдельную ветку">сравнить с…</button></div>`;
+    <button type="button" class="small" data-action="compareWith" data-arg="${esc(c.name)}" title="Сравнение уйдёт в отдельную ветку">сравнить с…</button>
+    <button type="button" class="small" data-action="bookmark" data-arg="${esc(c.name)}" title="Закладка — в долговременную память собеседника">☆ в закладки</button></div>`;
   return html + '</article>';
 }
 
@@ -678,7 +679,7 @@ function showWhy(turnId, callId) {
 
 function openWindow(name) {
   if (name === 'windows') {
-    const list = Object.entries(app.windows);
+      const list = Object.entries(app.windows);
     $('window-title').textContent = 'Окна';
     $('window-body').innerHTML = `<div class="wlist">${list.map(([k, w]) =>
       `<button type="button" data-action="openWindow" data-arg="${esc(k)}">${esc(w.title)}</button>`).join('')}
@@ -703,6 +704,159 @@ app.windows.file = {
     return `<p class="hint">${esc(f.path)}</p><pre>${esc(f.json)}</pre>`;
   },
 };
+
+/* ---------- человек: профиль, память, карточка фактов ---------- */
+
+function personView() { return app.conv && app.conv.extras ? app.conv.extras.persona : null; }
+
+// latinHidden — профиль просит скрывать латынь (роль «ребёнок»): карточка
+// показывает её только по наведению, а не в заголовке.
+function latinHidden() {
+  const p = personView();
+  return !!(p && p.profile && p.profile.values && p.profile.values.latin && p.profile.values.latin.value === 'hide');
+}
+
+function fieldLabel(key, value) {
+  const f = ((app.meta && app.meta.profileFields) || []).find(x => x.key === key);
+  if (!f) return value;
+  const o = f.options.find(x => x.value === value);
+  return o ? o.title : value;
+}
+
+app.panels.persona = (v, conv) => {
+  const fields = (app.meta && app.meta.profileFields) || [];
+  const values = (v.profile && v.profile.values) || {};
+  const on = name => conv.features && conv.features[name];
+  let prof = fields.filter(f => values[f.key]).map(f =>
+    `<span class="chip ok" title="${esc(f.title)}${values[f.key].quote ? ' — по словам: «' + esc(values[f.key].quote) + '»' : ''}">${esc(fieldLabel(f.key, values[f.key].value))}</span>`).join('');
+  if (!prof) prof = '<span class="hint">анкета пуста — заполнится из разговора или руками</span>';
+  if (!on('profile')) prof = '<span class="hint">профиль выключен в этом диалоге</span>';
+  const limits = ((v.profile && v.profile.limits) || []).map(l => `<span class="chip warn">не: ${esc(l.text)}</span>`).join('');
+  const entries = card => (card && card.entries) || [];
+  const long = entries(v.long).map(e => `<div><b>${esc(e.key)}</b>: ${esc(e.value)}</div>`).join('') || '<span class="hint">пусто</span>';
+  const work = v.work && v.work.id ? (entries(v.work).map(e => `<div><b>${esc(e.key)}</b>: ${esc(e.value)}</div>`).join('') || '<span class="hint">пусто</span>') : '';
+  return `<section class="panel" id="panel-person"><h2>Собеседник «${esc(v.owner)}»
+      <button type="button" class="small" data-action="openWindow" data-arg="people">анкета</button></h2>
+      <div class="chips">${prof}${limits}</div>
+      ${v.error ? `<div class="hint">${esc(v.error)}</div>` : ''}</section>
+    <section class="panel" id="panel-memory"><h2>Память <button type="button" class="small" data-action="openWindow" data-arg="memory">целиком</button></h2>
+      <div class="hint">долговременная${on('memory.long') ? '' : ' — выключена'} · ${esc(v.paths.long || '')}</div>${long}
+      ${work ? `<div class="hint" style="margin-top:4px">рабочая: подборка «${esc(v.work.title || v.work.id)}»</div>${work}` : ''}
+      ${conv.facts && conv.facts.entries && conv.facts.entries.length ? `<div class="hint" style="margin-top:4px">карточка фактов ветки</div>` +
+        conv.facts.entries.map(e => `<div><b>${esc(e.key)}</b>: ${esc(e.value)}</div>`).join('') : ''}</section>`;
+};
+
+const layerTitle = { long: 'долговременная', work: 'рабочая' };
+app.chips.memory = changes => (changes || []).map(c => {
+  const cls = c.op === 'skip' ? 'warn' : '';
+  const what = c.op === 'delete' ? `забыто «${c.key}»` : c.op === 'move' ? `«${c.key}» → ${layerTitle[c.layer]}` :
+    c.op === 'skip' ? `не записано «${c.key}»` : `${layerTitle[c.layer] || c.layer}: ${c.key} = ${c.value}`;
+  return `<span class="chip ${cls}" title="${esc(c.reason || 'память')}">🧠 ${esc(what)}</span>`;
+});
+app.chips.profile = changes => (changes || []).map(c => {
+  const cls = c.op === 'reject' ? 'bad' : c.op === 'once' ? 'warn' : 'ok';
+  const text = c.op === 'once' ? `разово: ${c.label}` : c.op === 'reject' ? `отклонено: ${c.title || c.value}` :
+    c.op === 'limit' ? `ограничение: ${c.value}` : `профиль: ${c.title} — ${c.label}`;
+  const tip = [c.reason, c.quote ? 'цитата: «' + c.quote + '»' : ''].filter(Boolean).join('\n');
+  return `<span class="chip ${cls}" title="${esc(tip)}">👤 ${esc(text)}</span>`;
+});
+app.chips.facts = changes => (changes || []).map(c =>
+  `<span class="chip ${c.op === 'skip' ? 'warn' : ''}" title="${esc(c.reason || 'карточка фактов ветки')}">📌 ${esc(c.op === 'delete' ? 'забыто ' + c.key : c.key + ': ' + (c.value || ''))}</span>`);
+app.chips.checks = checks => {
+  const def = (checks || []).filter(c => !c.na);
+  if (!def.length) return [];
+  const ok = def.filter(c => c.ok).length;
+  const tip = checks.map(c => `${c.title}: ${c.na ? 'не определить' : c.ok ? 'соблюдено' : 'нарушено'} — ${c.got}`).join('\n');
+  return [`<span class="chip ${ok === def.length ? 'ok' : 'bad'}" title="${esc(tip)}">профиль соблюдён ${ok} из ${def.length}</span>`];
+};
+app.chips.read = names => [`<span class="chip" title="Долговременная память: «уже читал»">📖 уже читал: ${esc((names || []).join(', '))}</span>`];
+
+app.windows.people = {
+  title: 'Картотека профилей',
+  async render() {
+    const out = await api('GET', '/api/people');
+    const fields = app.meta.profileFields || [];
+    const presets = app.meta.profilePresets || [];
+    const current = personView() ? personView().owner : '';
+    let html = '<p class="hint">Анкета — не пожелание, а правила: у каждого значения готовая строка промпта. Разовая просьба в разговоре анкету не меняет, повторённая — закрепляется.</p>';
+    for (const p of out.people || []) {
+      html += `<h3 style="margin:10px 0 4px">${esc(p.title || p.id)} ${p.id === current ? '<span class="chip ok">этот диалог</span>' : ''}
+        <span class="hint">${esc(p.paths.profile)}</span></h3><table class="grid"><tr><th>поле</th><th>значение</th></tr>`;
+      for (const f of fields) {
+        const cur = p.profile.values[f.key] ? p.profile.values[f.key].value : '';
+        html += `<tr><td>${esc(f.title)}${f.checked ? ' <span class="hint">(проверяется)</span>' : ''}</td><td>
+          <select data-change="setProfileField" data-person="${esc(p.id)}" data-field="${esc(f.key)}">
+          <option value="">— не задано —</option>${f.options.map(o => `<option value="${esc(o.value)}"${o.value === cur ? ' selected' : ''}>${esc(o.title)}</option>`).join('')}
+          </select></td></tr>`;
+      }
+      html += `</table><div class="chips" style="margin-top:4px">${(p.profile.limits || []).map(l =>
+        `<span class="chip warn">не: ${esc(l.text)} <button type="button" class="link" data-action="unlimit" data-person="${esc(p.id)}" data-arg="${esc(l.text)}">×</button></span>`).join('')}
+        <button type="button" class="small" data-action="addLimit" data-arg="${esc(p.id)}">+ ограничение</button>
+        ${presets.map(pr => `<button type="button" class="small" data-action="applyPreset" data-person="${esc(p.id)}" data-arg="${esc(pr.id)}">заготовка «${esc(pr.title)}»</button>`).join('')}
+        </div>`;
+    }
+    if (!(out.people || []).length) html += '<p class="hint">Пока никого нет.</p>';
+    return html;
+  },
+};
+
+app.windows.memory = {
+  title: 'Память целиком',
+  async render() {
+    const out = await api('GET', '/api/memory');
+    const table = (card, layer) => `<h3 style="margin:10px 0 4px">${esc(layerTitle[layer])}: ${esc(card.title || card.id)} <span class="hint">версия ${card.version}</span></h3>
+      <table class="grid"><tr><th>ключ</th><th>значение</th><th>ход</th><th>откуда</th><th></th></tr>${card.entries.map(e =>
+        `<tr><td>${esc(e.key)}</td><td>${esc(e.value)}</td><td>${e.turn}</td><td>${esc(e.source || '')}</td>
+         <td><button type="button" class="small" data-action="forgetMemory" data-layer="${layer}" data-id="${esc(card.id)}" data-arg="${esc(e.key)}">забыть</button></td></tr>`).join('')}</table>
+      <button type="button" class="small" data-action="putMemory" data-layer="${layer}" data-arg="${esc(card.id)}">+ запись</button>`;
+    let html = '<p class="hint">Три слоя по адресам: краткосрочная — в файле диалога, рабочая — по подборке, долговременная — по человеку. Один ключ живёт в одном слое.</p>';
+    for (const c of out.long || []) html += table(c, 'long');
+    for (const c of out.work || []) html += table(c, 'work');
+    if (!(out.long || []).length && !(out.work || []).length) html += '<p class="hint">Память пуста.</p>';
+    return html;
+  },
+};
+
+async function afterWindowEdit(name) {
+  try { $('window-body').innerHTML = await app.windows[name].render(); } catch (e) { toast(e.message, true); }
+  if (app.conv) loadConv(app.conv.id, true);
+}
+
+Object.assign(actions, {
+  async setProfileField(value, el) {
+    try {
+      await api('POST', `/api/people/${el.dataset.person}/profile`, value ? { op: 'set', field: el.dataset.field, value } : { op: 'clear', field: el.dataset.field });
+      toast('Анкета записана');
+      await afterWindowEdit('people');
+    } catch (e) { toast(e.message, true); }
+  },
+  async addLimit(person) {
+    const text = prompt('Чего справочнику не делать никогда (например, «не рассказывай про охоту»)?');
+    if (!text) return;
+    try { await api('POST', `/api/people/${person}/profile`, { op: 'limit', text }); await afterWindowEdit('people'); } catch (e) { toast(e.message, true); }
+  },
+  async unlimit(text, el) {
+    try { await api('POST', `/api/people/${el.dataset.person}/profile`, { op: 'unlimit', text }); await afterWindowEdit('people'); } catch (e) { toast(e.message, true); }
+  },
+  async applyPreset(preset, el) {
+    try { await api('POST', `/api/people/${el.dataset.person}/profile`, { op: 'preset', preset }); await afterWindowEdit('people'); } catch (e) { toast(e.message, true); }
+  },
+  async forgetMemory(key, el) {
+    try { await api('POST', `/api/memory/${el.dataset.layer}/${el.dataset.id}`, { op: 'forget', key }); await afterWindowEdit('memory'); } catch (e) { toast(e.message, true); }
+  },
+  async putMemory(id, el) {
+    const key = prompt('Ключ записи:');
+    if (!key) return;
+    const value = prompt('Значение:');
+    if (!value) return;
+    try { await api('POST', `/api/memory/${el.dataset.layer}/${id}`, { op: 'put', key, value }); await afterWindowEdit('memory'); } catch (e) { toast(e.message, true); }
+  },
+  async bookmark(name) {
+    const p = personView();
+    if (!p || !p.owner) { toast('У диалога нет собеседника'); return; }
+    try { await api('POST', `/api/people/${p.owner}/bookmark`, { name }); toast('В закладках: ' + name); loadConv(app.conv.id, true); } catch (e) { toast(e.message, true); }
+  },
+});
 
 /* ---------- события DOM ---------- */
 

@@ -26,7 +26,7 @@ const maxTurnsInMemory = 64
 var (
 	ErrNotFound = errors.New("диалог не найден")
 	// ErrBusy — в диалоге уже идёт ход (один ход за раз на диалог).
-	ErrBusy = errors.New("справочник ещё отвечает на предыдущее сообщение")
+	ErrBusy  = errors.New("справочник ещё отвечает на предыдущее сообщение")
 	ErrEmpty = errors.New("сообщение пустое")
 )
 

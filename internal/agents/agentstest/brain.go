@@ -31,7 +31,9 @@ type Brain struct {
 	LeadScript func(req llm.Request, step int) llm.Response
 	// TextOnly — идентификатор отвечает текстом вместо инструмента.
 	TextOnly bool
-	calls    map[string]int
+	// Extract — ответ извлекателя памяти и профиля; пусто — «правок нет».
+	Extract func(req llm.Request) (string, error)
+	calls   map[string]int
 }
 
 func (b *Brain) count(who string) {
@@ -120,6 +122,16 @@ func (b *Brain) Chat(req llm.Request) (llm.Response, error) {
 	case strings.Contains(sys, "агент сравнения"):
 		b.count("comparer")
 		return b.comparer(req), nil
+	case strings.HasPrefix(sys, "Ты ведёшь память и профиль"):
+		b.count("extract")
+		if b.Extract == nil {
+			return llmtest.Text(`{"profile":{"set":[]},"memory":{"set":[]},"facts":{"set":[]}}`), nil
+		}
+		text, err := b.Extract(req)
+		if err != nil {
+			return llm.Response{}, err
+		}
+		return llmtest.Text(text), nil
 	case strings.Contains(sys, "ведёшь разговор справочника"):
 		b.count("lead")
 		if b.LeadScript != nil {
