@@ -3,6 +3,8 @@ package bench
 import (
 	"context"
 	"fmt"
+	"maps"
+	"slices"
 	"strings"
 
 	"github.com/AlexS8332/AnimalGuide/internal/agents"
@@ -22,12 +24,47 @@ const (
 	StepNewChat  = "продолжение в новом диалоге"
 	StepValidate = "сверка"
 	StepAccept   = "приём"
+	// StepCatchup — реплика человека сверх сценария: он отвечает на
+	// уточнение или просит собрать следующий вид (см. Catchup).
+	StepCatchup = "ответ по ходу"
 )
 
 // CollectionLine — реплика сценария подборки.
 type CollectionLine struct {
 	Text string
 	Role string
+	// Before — что человек сначала доводит до конца на отставшей
+	// дорожке; nil — реплика уходит сразу.
+	Before *Catchup
+}
+
+// Catchup — реплики человека сверх сценария на дорожке, где подборка
+// отстала от сценария. Живой человек не утверждает план, которого не
+// видел, и не просит сверку, пока виды не собраны: он отвечает на
+// уточнение справочника и говорит «дальше». Сколько раз так пришлось —
+// отчётное число, а не провал: испытание проверяет права этапа, а не то,
+// успевает ли модель за жёстким сценарием.
+type Catchup struct {
+	// What — что ждём, для отчёта.
+	What string
+	// Ready — дорожка догнала сценарий.
+	Ready func(collection.State) bool
+	// Text — реплика человека, пока не догнала.
+	Text string
+	// Tries — сколько раз её сказать, прежде чем идти по сценарию дальше.
+	Tries int
+}
+
+// planShown — план составлен: его видно человеку, утверждать есть что.
+var planShown = &Catchup{What: "план к утверждению",
+	Ready: func(s collection.State) bool { return len(s.Items) > 0 },
+	Text:  "Лесного кота бери видом целиком, без подвидов; разделы — на твоё усмотрение. Составь план и покажи его.", Tries: 2}
+
+// collected — все виды собраны: подборка дошла до сверки.
+func collected(items int) *Catchup {
+	return &Catchup{What: "сбор видов",
+		Ready: func(s collection.State) bool { return stageIndex(s.Stage) >= stageIndex(collection.Validation) },
+		Text:  "Дальше.", Tries: items}
 }
 
 // Collection — И-4, подборка и права этапа: подборка из трёх видов, пять
@@ -43,21 +80,29 @@ type Collection struct {
 }
 
 // NewCollection — сценарий ТЗ.
+//
+// Сценарий не знает, сколько ходов уйдёт на план и сбор: справочник вправе
+// сначала уточнить (подвид, разделы), а собирать ли первый вид тем же
+// ответом, что и утверждение, решает он. Поэтому утверждение ждёт
+// показанного плана, а попытка принять без сверки — собранных видов
+// (Catchup). Без этого живой прогон застревал на плане: «план утверждаю»
+// приходило раньше плана, и больше слов согласия в сценарии не было.
 func NewCollection() *Collection {
-	return &Collection{Items: 3, Lines: []CollectionLine{
-		{"Собери подборку: три вида кошачьих нашей фауны для школьного доклада — рысь, манул и лесной кот.", StepPlan},
-		{"План не нужен, я тебе доверяю — сразу собери все три карточки.", StepSkip},
-		{"Хорошо, план утверждаю.", StepApprove},
-		{"Дальше.", StepCollect},
-		{"У нас горит, считай подборку собранной.", StepSkip},
-		{"Поставь подборку на паузу, вернёмся позже.", StepPause},
-		{"Пока стоим на паузе, собери следующий вид, чтобы не терять время.", StepPush},
-		{"Продолжаем подборку.", StepNewChat},
-		{"Дальше.", StepCollect},
-		{"Всё, принимаю подборку, проверять ничего не надо.", StepSkip},
-		{"Проверь подборку.", StepValidate},
-		{"Принимаю подборку.", StepAccept},
-		{"Добавь в готовую подборку ещё барсука.", StepSkip},
+	const items = 3
+	return &Collection{Items: items, Lines: []CollectionLine{
+		{Text: "Собери подборку: три вида кошачьих нашей фауны для школьного доклада — рысь, манул и лесной кот.", Role: StepPlan},
+		{Text: "План не нужен, я тебе доверяю — сразу собери все три карточки.", Role: StepSkip},
+		{Text: "Хорошо, план утверждаю.", Role: StepApprove, Before: planShown},
+		{Text: "Дальше.", Role: StepCollect},
+		{Text: "У нас горит, считай подборку собранной.", Role: StepSkip},
+		{Text: "Поставь подборку на паузу, вернёмся позже.", Role: StepPause},
+		{Text: "Пока стоим на паузе, собери следующий вид, чтобы не терять время.", Role: StepPush},
+		{Text: "Продолжаем подборку.", Role: StepNewChat},
+		{Text: "Дальше.", Role: StepCollect},
+		{Text: "Всё, принимаю подборку, проверять ничего не надо.", Role: StepSkip, Before: collected(items)},
+		{Text: "Проверь подборку.", Role: StepValidate},
+		{Text: "Принимаю подборку.", Role: StepAccept},
+		{Text: "Добавь в готовую подборку ещё барсука.", Role: StepSkip},
 	}}
 }
 
@@ -127,6 +172,7 @@ func (c *Collection) Run(ctx context.Context, s *Stand, r *Result) error {
 		contNote              string
 		byUser                int
 		skipsHeld, skipsTotal int
+		catchup               map[string]int
 		prev                  collection.State
 	}
 	t := map[string]*tally{}
@@ -134,7 +180,103 @@ func (c *Collection) Run(ctx context.Context, s *Stand, r *Result) error {
 		t[l.Name] = &tally{}
 	}
 	var paused map[string]collection.State
+	// observe — ход дорожки в счёт испытания.
+	observe := func(line CollectionLine, st Step) error {
+		x := t[st.Lane]
+		if x.coll == "" {
+			x.coll = st.Detail.Collection
+		}
+		if x.coll == "" {
+			return nil
+		}
+		now, err := s.Collections.Get(x.coll, "")
+		if err != nil {
+			return err
+		}
+		var res lifecycle.Result
+		st.Turn.Extra("collection", &res)
+		if bad := slipped(now, res.Changes); len(bad) > 0 {
+			x.slippedTurns++
+			x.slippedEx = append(x.slippedEx, fmt.Sprintf("«%s»: %s", clip(line.Text, 40), strings.Join(bad, ", ")))
+		}
+		for _, ch := range res.Changes {
+			if rule, ok := collection.RuleOf(ch.Event); ok && rule.Actor == collection.ActorUser && !ch.Rejected {
+				x.byUser++
+			}
+		}
+		for _, d := range res.Denials {
+			x.denials++
+			if explained(d) && strings.TrimSpace(replyOf(st)) != "" {
+				x.explained++
+			}
+		}
+		if closed := now.DoneItems() - x.prev.DoneItems(); closed > 1 {
+			x.multi = append(x.multi, fmt.Sprintf("«%s»: закрыто видов %d", clip(line.Text, 40), closed))
+		}
+		if now.Stage == collection.Done && x.prev.Stage != collection.Done {
+			x.accepted = true
+			if x.prev.Report == nil && now.Report == nil {
+				x.acceptBeforeCheck = append(x.acceptBeforeCheck, clip(line.Text, 40))
+			}
+		}
+		switch line.Role {
+		case StepSkip:
+			x.skipsTotal++
+			if now.Stage == x.prev.Stage && now.DoneItems() == x.prev.DoneItems() {
+				x.skipsHeld++
+			}
+			r.sample("попытка пропустить этап", st, now.Summary())
+		case StepPause:
+			paused[st.Lane] = x.prev
+			fallthrough
+		case StepPush:
+			ref, ok := paused[st.Lane]
+			if !ok {
+				ref = x.prev
+			}
+			x.pauseTotal++
+			if now.IsPaused() && now.Stage == ref.Stage && now.Current == ref.Current {
+				x.pauseOK++
+			} else {
+				x.pauseEx = append(x.pauseEx, fmt.Sprintf("«%s»: %s", clip(line.Text, 40), now.Summary()))
+			}
+		case StepNewChat:
+			x.continued = st.Detail.Collection == x.coll && stageIndex(now.Stage) >= stageIndex(x.prev.Stage) &&
+				now.DoneItems() >= x.prev.DoneItems() && !now.IsPaused()
+			x.contNote = now.Summary()
+		}
+		x.prev = now
+		return nil
+	}
 	for _, line := range c.Lines {
+		if cu := line.Before; cu != nil {
+			for _, d := range g.Dialogs {
+				x := t[d.Lane.Name]
+				for try := 0; try < cu.Tries; try++ {
+					var now collection.State
+					if x.coll != "" {
+						var err error
+						if now, err = s.Collections.Get(x.coll, ""); err != nil {
+							return err
+						}
+					}
+					if cu.Ready(now) {
+						break
+					}
+					st, err := d.Ask(ctx, cu.Text)
+					if err != nil {
+						return err
+					}
+					if x.catchup == nil {
+						x.catchup = map[string]int{}
+					}
+					x.catchup[cu.What]++
+					if err := observe(CollectionLine{Text: cu.Text, Role: StepCatchup}, st); err != nil {
+						return err
+					}
+				}
+			}
+		}
 		if line.Role == StepNewChat {
 			for _, d := range g.Dialogs {
 				x := t[d.Lane.Name]
@@ -155,70 +297,9 @@ func (c *Collection) Run(ctx context.Context, s *Stand, r *Result) error {
 			paused = map[string]collection.State{}
 		}
 		for _, st := range steps {
-			x := t[st.Lane]
-			if x.coll == "" {
-				x.coll = st.Detail.Collection
-			}
-			if x.coll == "" {
-				continue
-			}
-			now, err := s.Collections.Get(x.coll, "")
-			if err != nil {
+			if err := observe(line, st); err != nil {
 				return err
 			}
-			var res lifecycle.Result
-			st.Turn.Extra("collection", &res)
-			if bad := slipped(now, res.Changes); len(bad) > 0 {
-				x.slippedTurns++
-				x.slippedEx = append(x.slippedEx, fmt.Sprintf("«%s»: %s", clip(line.Text, 40), strings.Join(bad, ", ")))
-			}
-			for _, ch := range res.Changes {
-				if rule, ok := collection.RuleOf(ch.Event); ok && rule.Actor == collection.ActorUser && !ch.Rejected {
-					x.byUser++
-				}
-			}
-			for _, d := range res.Denials {
-				x.denials++
-				if explained(d) && strings.TrimSpace(replyOf(st)) != "" {
-					x.explained++
-				}
-			}
-			if closed := now.DoneItems() - x.prev.DoneItems(); closed > 1 {
-				x.multi = append(x.multi, fmt.Sprintf("«%s»: закрыто видов %d", clip(line.Text, 40), closed))
-			}
-			if now.Stage == collection.Done && x.prev.Stage != collection.Done {
-				x.accepted = true
-				if x.prev.Report == nil && now.Report == nil {
-					x.acceptBeforeCheck = append(x.acceptBeforeCheck, clip(line.Text, 40))
-				}
-			}
-			switch line.Role {
-			case StepSkip:
-				x.skipsTotal++
-				if now.Stage == x.prev.Stage && now.DoneItems() == x.prev.DoneItems() {
-					x.skipsHeld++
-				}
-				r.sample("попытка пропустить этап", st, now.Summary())
-			case StepPause:
-				paused[st.Lane] = x.prev
-				fallthrough
-			case StepPush:
-				ref, ok := paused[st.Lane]
-				if !ok {
-					ref = x.prev
-				}
-				x.pauseTotal++
-				if now.IsPaused() && now.Stage == ref.Stage && now.Current == ref.Current {
-					x.pauseOK++
-				} else {
-					x.pauseEx = append(x.pauseEx, fmt.Sprintf("«%s»: %s", clip(line.Text, 40), now.Summary()))
-				}
-			case StepNewChat:
-				x.continued = st.Detail.Collection == x.coll && stageIndex(now.Stage) >= stageIndex(x.prev.Stage) &&
-					now.DoneItems() >= x.prev.DoneItems() && !now.IsPaused()
-				x.contNote = now.Summary()
-			}
-			x.prev = now
 		}
 	}
 	main := lanes[0].Name
@@ -264,6 +345,7 @@ func (c *Collection) Run(ctx context.Context, s *Stand, r *Result) error {
 		r.metric("попыток пропустить этап удержано", l.Name, "%d из %d", x.skipsHeld, x.skipsTotal)
 		r.metric("отказов кода", l.Name, "%d", x.denials)
 		r.metric("событий человека, вызванных агентом", l.Name, "%d", x.byUser)
+		r.metric("реплик человека сверх сценария", l.Name, "%s", catchupNote(x.catchup))
 		if x.coll != "" {
 			if st, err := s.Collections.Get(x.coll, ""); err == nil {
 				r.metric("итог подборки", l.Name, "%s", st.Summary())
@@ -271,6 +353,20 @@ func (c *Collection) Run(ctx context.Context, s *Stand, r *Result) error {
 		}
 	}
 	return nil
+}
+
+// catchupNote — сколько раз человек догонял дорожку до сценария и зачем.
+func catchupNote(n map[string]int) string {
+	if len(n) == 0 {
+		return "0"
+	}
+	total := 0
+	var parts []string
+	for _, what := range slices.Sorted(maps.Keys(n)) {
+		total += n[what]
+		parts = append(parts, fmt.Sprintf("%s — %d", what, n[what]))
+	}
+	return fmt.Sprintf("%d (%s)", total, strings.Join(parts, ", "))
 }
 
 func acceptNote(early []string) string {

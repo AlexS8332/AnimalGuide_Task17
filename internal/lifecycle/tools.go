@@ -385,6 +385,9 @@ func Prompt(st collection.State, gated bool) string {
 	if st.Goal != "" {
 		b.WriteString("Цель: " + st.Goal + "\n")
 	}
+	if len(st.Items) > 0 && len(st.Sections) > 0 {
+		b.WriteString("Разделы у каждого вида: " + sectionTitles(st.Sections) + "\n")
+	}
 	for _, it := range st.Items {
 		mark := map[string]string{collection.ItemDone: "✓", collection.ItemActive: "→", collection.ItemPending: "·"}[it.Status]
 		line := fmt.Sprintf("%s %d. %s", mark, it.N, it.Name)
@@ -407,6 +410,19 @@ func Prompt(st collection.State, gated bool) string {
 		fmt.Fprintf(&b, "Нет %s: %s; появится %s.\n", l.Tool, l.Why, l.When)
 	}
 	return strings.TrimRight(b.String(), "\n")
+}
+
+// sectionTitles — разделы плана словами: в новом диалоге модель видит план
+// только отсюда и иначе пересказывает разделы по памяти.
+func sectionTitles(keys []string) string {
+	out := make([]string, 0, len(keys))
+	for _, k := range keys {
+		if t, ok := card.TopicOf(k); ok {
+			k = strings.ToLower(t.Title)
+		}
+		out = append(out, k)
+	}
+	return strings.Join(out, ", ")
 }
 
 // PlainRules — те же правила словами для контрольной дорожки: формулировки

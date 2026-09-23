@@ -305,7 +305,8 @@ func TestPromptAndMisc(t *testing.T) {
 	s := collection.New(id, "совы")
 	collection.Apply(&s, collection.Op{Event: collection.EvPlan, Goal: "доклад", Items: []string{"неясыть"}}, collection.Ctx{Turn: 1})
 	p := Prompt(s, true)
-	for _, want := range []string{"его ведёт код, а не ты", "Выдано сейчас: plan", "Нет deliver", "появится на этапе сбора", "Ожидается: человек"} {
+	for _, want := range []string{"его ведёт код, а не ты", "Выдано сейчас: plan", "Нет deliver", "появится на этапе сбора", "Ожидается: человек",
+		"Разделы у каждого вида: ареал, питание"} {
 		if !strings.Contains(p, want) {
 			t.Errorf("в блоке нет %q:\n%s", want, p)
 		}
