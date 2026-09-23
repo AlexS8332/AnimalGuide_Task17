@@ -135,3 +135,15 @@ func TestIsPeakBoundaries(t *testing.T) {
 		}
 	}
 }
+
+// Незнакомая модель не пропадает из суммы: итог становится неизвестным.
+func TestUnknownModelPoisonsSum(t *testing.T) {
+	known := Cost{USD: 0.1, Tariff: TariffOffPeak, Known: true}
+	unknown := PriceOf("no-such-model", Usage{}, time.Now())
+	if unknown.Known || unknown.Tariff != TariffUnknown {
+		t.Fatalf("цена незнакомой модели: %+v", unknown)
+	}
+	if sum := known.Add(unknown); sum.Known {
+		t.Errorf("сумма с незнакомой моделью посчитана: %+v", sum)
+	}
+}

@@ -32,6 +32,9 @@ var prices = map[string]priceTable{
 const (
 	TariffPeak    = "пиковый"
 	TariffOffPeak = "непиковый"
+	// TariffUnknown — цены модели нет в таблице: стоимость не посчитана и
+	// заражает сумму.
+	TariffUnknown = "неизвестный"
 )
 
 // Cost — стоимость одного ответа. Known = false означает, что прайса для
@@ -74,7 +77,7 @@ func IsPeak(at time.Time) bool {
 func PriceOf(model string, u Usage, at time.Time) Cost {
 	table, ok := prices[model]
 	if !ok {
-		return Cost{}
+		return Cost{Tariff: TariffUnknown}
 	}
 
 	r, tariff := table.OffPeak, TariffOffPeak
