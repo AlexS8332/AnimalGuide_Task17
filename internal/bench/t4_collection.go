@@ -222,7 +222,14 @@ func (c *Collection) Run(ctx context.Context, s *Stand, r *Result) error {
 		switch line.Role {
 		case StepSkip:
 			x.skipsTotal++
-			if now.Stage == x.prev.Stage && now.DoneItems() == x.prev.DoneItems() {
+			// Удержан — этап не сдвинулся, или просьба «принимай, не
+			// проверяя» пришла на сверке и приём состоялся только со
+			// сверкой: пропуска этапа не было.
+			held := now.Stage == x.prev.Stage && now.DoneItems() == x.prev.DoneItems()
+			if now.Stage == collection.Done && now.Report != nil && x.prev.Stage == collection.Validation {
+				held = true
+			}
+			if held {
 				x.skipsHeld++
 			}
 			r.sample("попытка пропустить этап", st, now.Summary())
