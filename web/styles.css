@@ -217,3 +217,9 @@ table.grid th { color: var(--muted); font-weight: 600; font-size: 12px; }
 .items { display: flex; flex-wrap: wrap; gap: 2px 14px; font-size: 13px; margin: 2px 0 4px; }
 .items .item.current { font-weight: 600; }
 a.small { font-size: 12px; font-weight: normal; margin-left: 4px; text-transform: none; letter-spacing: 0; }
+
+/* свод */
+.rule-retired { text-decoration: line-through; opacity: .6; }
+#panel-charter .chips { margin: 2px 0 4px; }
+.window-body details { margin-top: 8px; }
+.window-body summary { cursor: pointer; color: var(--muted); font-size: 13px; }
