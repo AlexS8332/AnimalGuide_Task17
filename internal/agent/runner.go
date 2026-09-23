@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/AlexS8332/AnimalGuide/internal/features"
@@ -82,7 +83,27 @@ type Prepared struct {
 	// Features — набор механизмов диалога: по нему Runner решает, класть ли
 	// пометку источника и искать ли признаки попытки управлять агентом.
 	Features features.Set
+	// Preload — вызовы, которые код делает до первого запроса к модели.
+	Preload []Preload
 }
+
+// Preload — вызов инструмента агента, который код делает сам до первого
+// запроса к модели. Годится для шага без выбора — того, что агент по своему
+// промпту всё равно сделал бы первым (поиск по названию из запроса, раздел,
+// чьё название совпало с темой): запрос к модели ради такого шага — чистый
+// расход бюджета «запросов на ход».
+//
+// Вызов идёт тем же путём, что вызов моделью: инструмент из Spec.Tools (его
+// видит трекер), тот же журнал, пометка источника и поиск попыток управлять
+// агентом. Модель получает его как свой первый шаг — сообщение с вызовом и
+// ответ инструмента, — и дальше решает сама: результат можно не
+// использовать, а любой инструмент вызвать заново.
+type Preload struct {
+	Tool string
+	Args string
+}
+
+var preloadCalls atomic.Int64
 
 // Reply — итог прогона. Added — всё, что добавилось после истории:
 // сообщение пользователя, ответы модели, ответы инструментов, итоговый
@@ -179,6 +200,28 @@ func (r Runner) Run(ctx context.Context, spec Spec, in Prepared, em Emitter) (Re
 	stats := Stats{Context: Context{Estimate: est, Limit: r.ContextLimit, Trimmed: trimmed}}
 	reminders := 0
 
+	if len(in.Preload) > 0 {
+		call := llm.Message{Role: llm.RoleAssistant}
+		var replies []llm.Message
+		for _, p := range in.Preload {
+			t, ok := byName[p.Tool]
+			if !ok {
+				em.Log(Event{Agent: spec.Name, Kind: EventNote, Tool: p.Tool,
+					Title: "вызов " + p.Tool + " кодом пропущен: у агента нет такого инструмента"})
+				continue
+			}
+			tc := llm.ToolCall{ID: fmt.Sprintf("pre_%s_%d", p.Tool, preloadCalls.Add(1)), Type: "function",
+				Function: llm.FunctionCall{Name: p.Tool, Arguments: p.Args}}
+			call.ToolCalls = append(call.ToolCalls, tc)
+			stats.ToolCalls++
+			replies = append(replies, toolReply(tc.ID, callTool(ctx, spec.Name, 0, t, tc, in.Features, em, " кодом до первого запроса")))
+		}
+		if len(call.ToolCalls) > 0 {
+			messages = append(messages, call)
+			messages = append(messages, replies...)
+		}
+	}
+
 	for step := 1; step <= spec.MaxSteps; step++ {
 		stats.Steps = step
 		stepEst := tokens.OfMessages(defs, messages)
@@ -253,7 +296,6 @@ func (r Runner) Run(ctx context.Context, spec Spec, in Prepared, em Emitter) (Re
 		for _, call := range resp.Message.ToolCalls {
 			stats.ToolCalls++
 			name := call.Function.Name
-			args := json.RawMessage(call.Function.Arguments)
 
 			if f, ok := finishers[name]; ok {
 				em.Log(Event{Agent: spec.Name, Kind: EventToolCall, Step: step, Tool: name, CallID: call.ID,
@@ -263,7 +305,7 @@ func (r Runner) Run(ctx context.Context, spec Spec, in Prepared, em Emitter) (Re
 					messages = append(messages, toolReply(call.ID, errorPayload(errors.New("результат уже принят этим же ответом"))))
 					continue
 				}
-				res, err := f.Handle(ctx, call.ID, args)
+				res, err := f.Handle(ctx, call.ID, json.RawMessage(call.Function.Arguments))
 				if err != nil {
 					stats.Rejected++
 					em.Log(Event{Agent: spec.Name, Kind: EventToolError, Step: step, Tool: name, CallID: call.ID,
@@ -286,37 +328,7 @@ func (r Runner) Run(ctx context.Context, spec Spec, in Prepared, em Emitter) (Re
 				messages = append(messages, toolReply(call.ID, errorPayload(err)))
 				continue
 			}
-			s := t.Spec()
-			em.Log(Event{Agent: spec.Name, Kind: EventToolCall, Step: step, Tool: name, CallID: call.ID, Via: s.Via,
-				Title: "вызов " + name + viaNote(s.Via), Detail: prettyJSON(call.Function.Arguments)})
-
-			toolStarted := time.Now()
-			out, err := t.Call(tools.WithCallID(ctx, call.ID), args)
-			toolElapsed := time.Since(toolStarted)
-			if err != nil {
-				em.Log(Event{Agent: spec.Name, Kind: EventToolError, Step: step, Tool: name, CallID: call.ID, Via: s.Via,
-					Title: name + ": ошибка", Detail: err.Error(), Seconds: toolElapsed.Seconds()})
-				messages = append(messages, toolReply(call.ID, errorPayload(err)))
-				continue
-			}
-			em.Log(Event{Agent: spec.Name, Kind: EventToolResult, Step: step, Tool: name, CallID: call.ID, Via: s.Via,
-				Title:   fmt.Sprintf("%s: %s", name, sizeLabel(out)),
-				Detail:  tools.Truncate(prettyJSON(out), logDetailRunes),
-				Seconds: toolElapsed.Seconds()})
-			if s.Untrusted {
-				if in.Features.On(features.Scan) {
-					if hits := tools.ScanInjection(out); len(hits) > 0 {
-						em.Log(Event{Agent: spec.Name, Kind: EventInjection, Step: step, Tool: name, CallID: call.ID,
-							Mechanism: string(features.Scan), Hits: hits,
-							Title:  fmt.Sprintf("в ответе %s похоже на указания агенту: %s", name, hitNames(hits)),
-							Detail: "Фрагмент помечен, но не вырезан: это данные источника, и что с ними сделает агент — видно дальше по журналу."})
-					}
-				}
-				if in.Features.On(features.Envelope) {
-					out = tools.Envelope(name, out)
-				}
-			}
-			messages = append(messages, toolReply(call.ID, out))
+			messages = append(messages, toolReply(call.ID, callTool(ctx, spec.Name, step, t, call, in.Features, em, "")))
 		}
 		if final != nil {
 			added := append([]llm.Message(nil), messages[base:]...)
@@ -328,6 +340,43 @@ func (r Runner) Run(ctx context.Context, spec Spec, in Prepared, em Emitter) (Re
 	}
 
 	return Reply{Stats: stats}, fmt.Errorf("%w (%d)", ErrStepLimit, spec.MaxSteps)
+}
+
+// callTool исполняет вызов инструмента — модели или кода до первого
+// запроса — и возвращает то, что уйдёт модели: ответ с пометкой источника
+// или ошибку словами (ФТ-2). Журнал у обоих путей один.
+func callTool(ctx context.Context, agentName string, step int, t tools.Tool, call llm.ToolCall, fs features.Set, em Emitter, by string) string {
+	s := t.Spec()
+	name := call.Function.Name
+	em.Log(Event{Agent: agentName, Kind: EventToolCall, Step: step, Tool: name, CallID: call.ID, Via: s.Via,
+		Title: "вызов " + name + viaNote(s.Via) + by, Detail: prettyJSON(call.Function.Arguments)})
+
+	started := time.Now()
+	out, err := t.Call(tools.WithCallID(ctx, call.ID), json.RawMessage(call.Function.Arguments))
+	elapsed := time.Since(started)
+	if err != nil {
+		em.Log(Event{Agent: agentName, Kind: EventToolError, Step: step, Tool: name, CallID: call.ID, Via: s.Via,
+			Title: name + ": ошибка", Detail: err.Error(), Seconds: elapsed.Seconds()})
+		return errorPayload(err)
+	}
+	em.Log(Event{Agent: agentName, Kind: EventToolResult, Step: step, Tool: name, CallID: call.ID, Via: s.Via,
+		Title:   fmt.Sprintf("%s: %s", name, sizeLabel(out)),
+		Detail:  tools.Truncate(prettyJSON(out), logDetailRunes),
+		Seconds: elapsed.Seconds()})
+	if s.Untrusted {
+		if fs.On(features.Scan) {
+			if hits := tools.ScanInjection(out); len(hits) > 0 {
+				em.Log(Event{Agent: agentName, Kind: EventInjection, Step: step, Tool: name, CallID: call.ID,
+					Mechanism: string(features.Scan), Hits: hits,
+					Title:  fmt.Sprintf("в ответе %s похоже на указания агенту: %s", name, hitNames(hits)),
+					Detail: "Фрагмент помечен, но не вырезан: это данные источника, и что с ними сделает агент — видно дальше по журналу."})
+			}
+		}
+		if fs.On(features.Envelope) {
+			out = tools.Envelope(name, out)
+		}
+	}
+	return out
 }
 
 func viaNote(via string) string {

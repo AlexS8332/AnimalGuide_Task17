@@ -128,8 +128,10 @@ func TestOpenCardHappyPath(t *testing.T) {
 	if !strings.Contains(res.Text, "Lynx lynx") || len(res.Added) != 2 || res.Added[0].Content != "рысь" {
 		t.Fatalf("ответ: %q, добавлено %+v", res.Text, res.Added)
 	}
-	// Привратник 1 запрос + идентификатор 4 (поиск, чтение, сверка, сдача).
-	if e.b.Calls("gatekeeper") != 1 || e.b.Calls("identifier") != 4 || res.Stats.Steps != 5 {
+	// Привратник 1 запрос + идентификатор 3 (чтение, сверка, сдача): поиск
+	// по названию делает код до первого запроса, русские названия приходят
+	// вместе со сверкой.
+	if e.b.Calls("gatekeeper") != 1 || e.b.Calls("identifier") != 3 || res.Stats.Steps != 4 {
 		t.Fatalf("запросов: привратник %d, идентификатор %d, шагов в ходе %d",
 			e.b.Calls("gatekeeper"), e.b.Calls("identifier"), res.Stats.Steps)
 	}
@@ -144,6 +146,48 @@ func TestOpenCardHappyPath(t *testing.T) {
 	}
 }
 
+// Поиск по названию делает код до первого запроса к идентификатору, а
+// match_taxon приносит русские названия таксона: vernacular_names у
+// идентификатора нет, а вызовы кодом видны в журнале.
+func TestIdentifierPreloadsSearchAndVernacular(t *testing.T) {
+	e := newEnv(t)
+	var first llm.Request
+	var sawNames bool
+	e.fake.Fn = func(req llm.Request) (llm.Response, error) {
+		if strings.Contains(req.Messages[0].Content, "агент-идентификатор") {
+			if first.Messages == nil {
+				first = req
+			}
+			if strings.Contains(agentstest.LastReply(req, "match_taxon"), `"vernacular_rus":["Обыкновенная рысь"`) {
+				sawNames = true
+			}
+		}
+		return e.b.Chat(req)
+	}
+	e.run(t, Request{Kind: KindOpen, Name: "рысь"})
+	if agentstest.LastReply(first, "search_wikipedia") == "" {
+		t.Fatal("первый запрос идентификатора — без ответа поиска")
+	}
+	if llmtest.HasTool(first, "vernacular_names") || !llmtest.HasTool(first, "match_taxon") {
+		t.Fatal("набор инструментов идентификатора: vernacular_names отдельно не нужен")
+	}
+	if !sawNames {
+		t.Fatal("ответ match_taxon без русских названий таксона")
+	}
+	var pre, vern bool
+	for _, ev := range e.events(agent.EventToolCall) {
+		pre = pre || (ev.Agent == "identifier" && ev.Tool == "search_wikipedia" && strings.HasPrefix(ev.CallID, "pre_"))
+		vern = vern || (ev.Agent == "coordinator" && ev.Tool == "vernacular_names")
+	}
+	if !pre || !vern {
+		t.Fatalf("журнал: поиск кодом %v, названия кодом %v", pre, vern)
+	}
+	st := e.state()
+	if c := st.CurrentCard(); c == nil || c.Latin != "Lynx lynx" {
+		t.Fatalf("карточка: %+v", c)
+	}
+}
+
 func TestGatekeeperStopsBeforeExpensiveSteps(t *testing.T) {
 	e := newEnv(t)
 	e.b.GateNo = []string{"шурундук"}
@@ -154,6 +198,28 @@ func TestGatekeeperStopsBeforeExpensiveSteps(t *testing.T) {
 	}
 	if !strings.Contains(res.Text, "Сведений") || !strings.Contains(res.Text, "Похожее животное подставлять не буду") {
 		t.Fatalf("ответ: %s", res.Text)
+	}
+}
+
+// Название, о котором ветка уже решала, привратник второй раз не судит:
+// его отказ повторяется без запросов, а после отказа идентификатора
+// повторная попытка идёт сразу к идентификатору.
+func TestGatekeeperNotAskedTwiceForSameName(t *testing.T) {
+	e := newEnv(t)
+	e.b.GateNo = []string{"шурундук"}
+	e.run(t, Request{Kind: KindOpen, Name: "шурундук пятнистый"})
+	calls := e.fake.Calls()
+	res := e.run(t, Request{Kind: KindOpen, Name: "Шурундук пятнистый"})
+	if e.fake.Calls() != calls || !strings.Contains(res.Text, "Сведений") {
+		t.Fatalf("повторный отказ стоил запросов: %d → %d, ответ %q", calls, e.fake.Calls(), res.Text)
+	}
+
+	e.run(t, Request{Kind: KindOpen, Name: "полосатый манул"}) // привратник пропустил, идентификатор не нашёл
+	gate, ident := e.b.Calls("gatekeeper"), e.b.Calls("identifier")
+	e.run(t, Request{Kind: KindOpen, Name: "полосатый манул"})
+	if e.b.Calls("gatekeeper") != gate || e.b.Calls("identifier") == ident {
+		t.Fatalf("повтор после отказа идентификатора: привратник %d → %d, идентификатор %d → %d",
+			gate, e.b.Calls("gatekeeper"), ident, e.b.Calls("identifier"))
 	}
 }
 
@@ -359,7 +425,8 @@ func TestLeadOpensCardWithParallelSections(t *testing.T) {
 	if c.Section("habitat").Status != card.SectionRead || c.Section("diet").Status != card.SectionRead {
 		t.Fatalf("разделы: %+v", c.Sections)
 	}
-	if e.b.Calls("section") != 4 { // два специалиста по два запроса
+	// Два специалиста по одному запросу: подходящий раздел прочитал код.
+	if e.b.Calls("section") != 2 {
 		t.Fatalf("запросов специалистов %d", e.b.Calls("section"))
 	}
 	// Ход ведущего лежит в истории с вызовами и ответами инструментов.
@@ -367,7 +434,7 @@ func TestLeadOpensCardWithParallelSections(t *testing.T) {
 		t.Fatalf("история хода: %+v", res.Added)
 	}
 	// Расход хода — сумма всех агентов.
-	if res.Stats.Steps < 2+1+4+4 {
+	if res.Stats.Steps < 2+1+3+2 {
 		t.Fatalf("шагов в ходе %d", res.Stats.Steps)
 	}
 }

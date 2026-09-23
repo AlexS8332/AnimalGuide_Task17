@@ -440,3 +440,29 @@ func TestSmallHelpers(t *testing.T) {
 		t.Error("Refusal.Error")
 	}
 }
+
+// Латынь с автором и годом — та же сверка: отказ ради неё стоил бы лишнего
+// запроса к модели, а в карточку всё равно идёт canonical_name из GBIF.
+// Непроверенный вид с тем же родом не проходит.
+func TestCardAcceptsLatinWithAuthorship(t *testing.T) {
+	w := newWorld(t)
+	w.call(t, "read_wikipedia", `{"title":"Обыкновенная рысь"}`)
+	w.call(t, "match_taxon", `{"scientific_name":"Lynx lynx"}`)
+	for _, latin := range []string{"Lynx lynx (Linnaeus, 1758)", "Lynx lynx Linnaeus, 1758"} {
+		c, err := CheckCard(w.tr, draft("Обыкновенная рысь", latin, "Обыкновенная рысь", "Кошка."), "рысь")
+		if err != nil || c.Latin != "Lynx lynx" {
+			t.Fatalf("%q: %v, латынь %q", latin, err, c.Latin)
+		}
+	}
+	for _, latin := range []string{"Lynx pardinus (Temminck, 1827)", "Lynx lynx dinniki"} {
+		if _, err := CheckCard(w.tr, draft("Рысь", latin, "Обыкновенная рысь", "Кошка."), "рысь"); err == nil {
+			t.Fatalf("%q принята без сверки", latin)
+		}
+	}
+	for in, want := range map[string]string{"Grus Brisson, 1760": "Grus", "Otocolobus manul (Pallas, 1776)": "Otocolobus manul",
+		"Canis lupus familiaris": "Canis lupus familiaris", "  ": ""} {
+		if got := CanonicalLatin(in); got != want {
+			t.Errorf("CanonicalLatin(%q) = %q, ждали %q", in, got, want)
+		}
+	}
+}

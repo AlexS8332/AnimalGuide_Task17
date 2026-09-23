@@ -138,7 +138,7 @@ func TestExtractFillsProfileMemoryAndFacts(t *testing.T) {
 func TestTurnSurvivesBrokenExtractor(t *testing.T) {
 	r := newRig(t)
 	r.brain.Extract = func(llm.Request) (string, error) { return "", errors.New("модель недоступна") }
-	v, d := r.turn(t, "", "что едят рыси?", features.Set{})
+	v, d := r.turn(t, "", "Мне для урока: что едят рыси?", features.Set{})
 	if v.Status != runs.StatusDone || v.Reply == "" {
 		t.Fatalf("ход упал вместе с извлекателем: %+v", v)
 	}
@@ -152,7 +152,7 @@ func TestTurnSurvivesBrokenExtractor(t *testing.T) {
 		t.Fatal("неудача извлекателя не видна в журнале или не посчитана")
 	}
 	r.brain.Extract = func(llm.Request) (string, error) { return "мусор", nil }
-	v, _ = r.turn(t, v.ConversationID, "а где живут?", features.Set{})
+	v, _ = r.turn(t, v.ConversationID, "А мне ещё: где живут?", features.Set{})
 	if v.Status != runs.StatusDone {
 		t.Fatal("мусорный ответ извлекателя уронил ход")
 	}
@@ -185,6 +185,29 @@ func TestSwitchesMakeZeroCost(t *testing.T) {
 	}
 	if !noted {
 		t.Fatal("выключенный извлекатель — молчаливая дыра")
+	}
+}
+
+// Вопрос о животном без слов о человеке, форме и подборке — извлекатель не
+// зовётся, а в журнале видно почему; реплика о себе — зовётся.
+func TestPlainQuestionSkipsExtractor(t *testing.T) {
+	r := newRig(t)
+	v, d := r.turn(t, "", "Что едят рыси?", features.Set{})
+	if v.Status != runs.StatusDone || r.brain.Calls("extract") != 0 || d.Meter.Calls != 0 {
+		t.Fatalf("извлекатель на вопросе о животном: %d запросов", r.brain.Calls("extract"))
+	}
+	noted := false
+	for _, e := range d.TurnList[0].Events {
+		if e.Mechanism == string(features.Extract) && strings.Contains(e.Title, "извлекать нечего") {
+			noted = true
+		}
+	}
+	if !noted {
+		t.Fatal("пропуск извлекателя не виден в журнале")
+	}
+	r.turn(t, v.ConversationID, "Меня зовут Алекс, что едят рыси?", features.Set{})
+	if r.brain.Calls("extract") != 1 {
+		t.Fatalf("реплика о себе без извлекателя: %d", r.brain.Calls("extract"))
 	}
 }
 

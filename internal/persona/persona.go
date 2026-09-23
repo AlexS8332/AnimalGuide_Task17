@@ -148,6 +148,15 @@ func (h *Hook) extractNeeded(t *runs.Turn) bool {
 	if kind, _, _ := agents.Classify(text, card.State{}); kind == agents.KindOpen {
 		return false
 	}
+	// Вопрос о животном без слов о человеке, форме ответа и подборке:
+	// правок из него не бывает, а тема хода и так видна в карточках пути.
+	// Решает арифметика, а не модель (ИП-2); в журнале — почему не звали.
+	if extract.Nothing(text) {
+		t.Em.Log(agent.Event{Agent: "extract", Kind: agent.EventMechanism, Mechanism: string(features.Extract),
+			Title:  "извлекатель не звался: вопрос о животном, извлекать нечего",
+			Detail: "В реплике нет слов о человеке, форме ответа, подборке и решений — правкам памяти, профиля и карточки фактов взяться неоткуда."})
+		return false
+	}
 	return true
 }
 

@@ -20,6 +20,7 @@ import (
 	"github.com/AlexS8332/AnimalGuide/internal/features"
 	"github.com/AlexS8332/AnimalGuide/internal/history"
 	"github.com/AlexS8332/AnimalGuide/internal/lifecycle"
+	"github.com/AlexS8332/AnimalGuide/internal/llm"
 	"github.com/AlexS8332/AnimalGuide/internal/runs"
 )
 
@@ -48,6 +49,12 @@ func WantsNew(text string) bool { return newRe.MatchString(text) }
 func (h *Hook) Before(ctx context.Context, t *runs.Turn) error {
 	fs := t.Features
 	if !fs.On(features.CollectionState) {
+		if (t.Request.Kind == agents.KindMessage || t.Request.Kind == "") && aboutCollection(t) {
+			t.Request.Rules = joinRules(t.Request.Rules, plainCollection)
+			t.Em.Log(agent.Event{Agent: Name, Kind: agent.EventMechanism, Mechanism: string(features.CollectionState),
+				Title:  "состояние подборки выключено — порядок подборки уходит ведущему словами",
+				Detail: plainCollection})
+		}
 		return nil
 	}
 	text := strings.TrimSpace(t.Request.Text)
@@ -81,6 +88,42 @@ func (h *Hook) Before(ctx context.Context, t *runs.Turn) error {
 	}
 	t.Handler = func(ctx context.Context) (agents.Result, error) { return h.run(ctx, t, id, title) }
 	return nil
+}
+
+// plainCollection — подборка словами для ведущего, когда состояния подборки
+// нет (запасной путь реестра: «подборка ведётся по словам промпта и
+// истории»). Без этих слов «Собери подборку: рысь и манул» ведущий
+// понимал как «открой всё сразу» и одним ходом открывал обе карточки со
+// всеми разделами: 31 запрос к модели против 2 на дорожке с состоянием, и
+// пара И-6 сравнивала не блок, а два разных сценария.
+const plainCollection = `Подборка ведётся без формального состояния — по этим правилам и истории разговора.
+- Сначала план: какие виды войдут и какие разделы читать. Покажи его списком и дождись согласия человека; карточки этим же ходом не открывай.
+- После согласия — по одному виду за ответ: open_card с разделами плана и коротко о том, что вошло. Следующий вид — следующим ходом.`
+
+// aboutCollection — идёт ли речь о подборке: в реплике или в последних
+// репликах человека ветки.
+func aboutCollection(t *runs.Turn) bool {
+	if WantsNew(t.Request.Text) {
+		return true
+	}
+	seen := 0
+	for i := len(t.History) - 1; i >= 0 && seen < 3; i-- {
+		if t.History[i].Role != llm.RoleUser {
+			continue
+		}
+		seen++
+		if strings.Contains(strings.ToLower(t.History[i].Content), "подборк") {
+			return true
+		}
+	}
+	return false
+}
+
+func joinRules(a, b string) string {
+	if strings.TrimSpace(a) == "" {
+		return b
+	}
+	return a + "\n\n" + b
 }
 
 // After — ничего: итог записывает сам ход подборки.

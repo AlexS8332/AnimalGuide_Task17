@@ -67,12 +67,32 @@ func (t *turn) openCard(ctx context.Context, name string) (*card.Card, *card.Not
 		cc := *c
 		return &cc, nil, nil
 	}
+	// Название, о котором в этой ветке уже решали, привратник второй раз не
+	// судит: его ответ при температуре 0 тот же, а запрос — лишний. Отказ
+	// привратника повторяется без единого запроса к модели; если привратник
+	// название пропустил, а сведений не нашёл идентификатор, — идентификатор
+	// пробует снова (его неудача могла быть сбоем источника), но без
+	// привратника.
+	prior := st.Refused(name)
+	if prior != nil && prior.Gate {
+		nf := *prior
+		note(t.em, "«"+name+"» привратник в этой ветке уже отклонил — повторно не спрашиваю", nf.Reason)
+		t.em.Publish(agent.Update{Kind: "notfound", Data: nf})
+		return nil, &nf, nil
+	}
 	started := time.Now()
 	t.em.Log(agent.Event{Agent: coordinatorName, Kind: agent.EventAgentStart,
 		Title: "открываю карточку «" + name + "»: привратник → идентификатор"})
 
-	v, gs := Gate(ctx, t.d, name, t.fs, t.em)
-	t.add(gs)
+	var v Verdict
+	if prior != nil {
+		v = Verdict{OK: true, Skipped: true}
+		note(t.em, "«"+name+"» привратник в этой ветке уже пропустил — сразу к идентификатору", "")
+	} else {
+		var gs agent.Stats
+		v, gs = Gate(ctx, t.d, name, t.fs, t.em)
+		t.add(gs)
+	}
 	if !v.OK {
 		nf := card.NotFound{Query: name, Reason: "похожее название не означает то же животное: такого таксона привратник не знает", Gate: true}
 		t.delta(card.Delta{Kind: card.DeltaNotFound, NotFound: &nf})

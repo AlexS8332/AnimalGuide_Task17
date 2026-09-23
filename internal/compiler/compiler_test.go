@@ -229,10 +229,24 @@ func TestSwitchesAndAPI(t *testing.T) {
 	reg := features.Catalog()
 	// Без состояния подборки реплику ведёт ведущий, файла нет.
 	off := reg.Defaults().With(features.Gates, false).With(features.CollectionState, false)
+	var leadSys []string
+	r.brain.LeadScript = func(req llm.Request, step int) llm.Response {
+		leadSys = append(leadSys, req.Messages[0].Content)
+		return llmtest.Text("План: рысь, манул. Согласны?")
+	}
 	d := r.send(t, "", "Собери подборку: кошки", off)
 	if d.Collection != "" || d.TurnList[0].Route != agents.RouteLead {
 		t.Fatal("подборка без механизма")
 	}
+	// Порядок подборки уходит ведущему словами — и на следующей реплике,
+	// где слова «подборка» уже нет; разговор не о подборке их не получает.
+	d = r.send(t, d.ID, "Хорошо, план утверждаю.", off)
+	d2 := r.send(t, "", "Где живёт рысь?", off)
+	if len(leadSys) != 3 || !strings.Contains(leadSys[0], plainCollection) || !strings.Contains(leadSys[1], plainCollection) ||
+		strings.Contains(leadSys[2], plainCollection) || d2.Collection != "" {
+		t.Fatal("правила подборки словами без механизма состояния")
+	}
+	r.brain.LeadScript = nil
 	// Без прав этапа: автомат есть, правила словами, инструменты все сразу.
 	noGates := reg.Defaults().With(features.Gates, false)
 	var sysPrompt string

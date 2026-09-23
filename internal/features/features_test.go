@@ -209,3 +209,23 @@ func TestDescribeAndLabels(t *testing.T) {
 		t.Fatal("Get")
 	}
 }
+
+// Цены блоков в реестре — измерения И-6, а не оценки: у каждого механизма с
+// блоком цена есть, и сумма блоков оставляет место под системный промпт,
+// описания инструментов и окно в пределах постоянной части (6 тыс.,
+// раздел 10 ТЗ).
+func TestCatalogBlockCostsMeasured(t *testing.T) {
+	sum := 0
+	for _, m := range Catalog().All() {
+		if !m.Kind.Has(KindBlock) {
+			continue
+		}
+		if m.Cost.Tokens <= 0 {
+			t.Errorf("%s: блок без цены", m.Name)
+		}
+		sum += m.Cost.Tokens
+	}
+	if sum > 3000 {
+		t.Fatalf("блоки по реестру ≈%d токенов: постоянной части в 6 тыс. не хватит на промпт и инструменты", sum)
+	}
+}

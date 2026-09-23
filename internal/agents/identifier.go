@@ -24,11 +24,11 @@ const identifierSystem = `Ты агент-идентификатор справ�
 ` + groundingRules + `
 
 Порядок работы:
-1. search_wikipedia по названию. Выбери статью строго по правилам проверки названия.
+1. Поиск по названию программа уже сделала: ответ search_wikipedia есть в разговоре. Выбери статью строго по правилам проверки названия; если в выдаче её нет — поищи сам другим запросом.
 2. read_wikipedia без section: вступление и список разделов. Латинское название обычно во вступлении в скобках после «лат.».
-3. match_taxon с латинским названием. Подтверждено, только если found = true.
-4. Если сомневаешься, что русское название относится к этому таксону, проверь vernacular_names по usage_key.
-5. Сдай карточку: русское название, латынь ровно как её подтвердил match_taxon, заголовок статьи, краткое описание (2–4 предложения по вступлению) и русские названия таксонов из ответа match_taxon (царство, тип, класс, отряд, семейство, род), если уверен в них.
+3. match_taxon с латинским названием. Подтверждено, только если found = true. В ответе сразу есть русские названия таксона по GBIF (vernacular_rus): по ним проверь, что русское название относится к этому таксону.
+Если латынь видна уже в выдаче поиска, вызови read_wikipedia и match_taxon одним ответом: друг от друга они не зависят.
+4. Сдай карточку: русское название, латынь ровно как её подтвердил match_taxon, заголовок статьи, краткое описание (2–4 предложения по вступлению) и русские названия таксонов из ответа match_taxon (царство, тип, класс, отряд, семейство, род), если уверен в них.
 
 Дерево классификации и разделы статьи достроит программа — taxon_tree и чтение разделов не нужны.`
 
@@ -87,8 +87,13 @@ func Identify(ctx context.Context, d Deps, reg *tools.Registry, query string, bl
 	if err != nil {
 		return Identified{}, err
 	}
+	list = identifierTools(list, em)
 	spec := agent.Spec{Name: identifierName, System: identifierSystem, Tools: tr.ObserveAll(list), MaxSteps: identifierMaxSteps}
 	user := fmt.Sprintf("Запрос пользователя: «%s».", strings.TrimSpace(query))
+	// Первый шаг идентификатора — поиск по названию из запроса — выбора не
+	// содержит: код делает его сам, и модель начинает с выбора статьи. Один
+	// запрос к модели на каждое новое животное.
+	preload := []agent.Preload{{Tool: "search_wikipedia", Args: jsonArgs(map[string]string{"query": strings.TrimSpace(query)})}}
 
 	var accepted *card.Card
 	var missing *card.NotFound
@@ -121,7 +126,7 @@ func Identify(ctx context.Context, d Deps, reg *tools.Registry, query string, bl
 			"Те же правила переданы словами в промпте; латынь и статья кодом не сверяются.")
 	}
 
-	reply, err := d.Runner.Run(ctx, spec, agent.Prepared{Blocks: headBlocks(blocks), User: user, Features: fs}, em)
+	reply, err := d.Runner.Run(ctx, spec, agent.Prepared{Blocks: headBlocks(blocks), User: user, Features: fs, Preload: preload}, em)
 	out := Identified{Stats: reply.Stats}
 	if err != nil {
 		return out, fmt.Errorf("идентификатор: %w", err)
@@ -144,6 +149,72 @@ func Identify(ctx context.Context, d Deps, reg *tools.Registry, query string, bl
 		out.NotFound = &card.NotFound{Query: query, Reason: "идентификатор не сдал результат"}
 	}
 	return out, nil
+}
+
+// identifierTools — инструменты идентификатора: match_taxon сразу
+// приносит русские названия таксона, а отдельного vernacular_names у
+// агента нет. Модель звала его после каждой сверки «на всякий случай» —
+// ещё один запрос к модели на каждое животное, хотя ключ таксона уже
+// известен и второй вызов GBIF кодом ничего не решает за модель. Запрет
+// держится отсутствием инструмента (ИП-7), а не словами промпта.
+func identifierTools(list []tools.Tool, em agent.Emitter) []tools.Tool {
+	var vern tools.Tool
+	for _, t := range list {
+		if t.Spec().Name == "vernacular_names" {
+			vern = t
+		}
+	}
+	if vern == nil {
+		return list
+	}
+	out := make([]tools.Tool, 0, len(list))
+	for _, t := range list {
+		switch t.Spec().Name {
+		case "vernacular_names":
+			continue
+		case "match_taxon":
+			t = withVernacular(t, vern, em)
+		}
+		out = append(out, t)
+	}
+	return out
+}
+
+// withVernacular дописывает к найденному таксону его русские названия по
+// GBIF (vernacular_rus). Вызов идёт кодом координатора, с журналом;
+// неудача — пометка в ответе, а не ошибка сверки: латынь уже подтверждена.
+func withVernacular(match, vern tools.Tool, em agent.Emitter) tools.Tool {
+	return tools.Wrap(match, func(ctx context.Context, args json.RawMessage, next tools.CallFunc) (string, error) {
+		out, err := next(ctx, args)
+		if err != nil {
+			return out, err
+		}
+		data, _ := tools.Unwrap(out)
+		dec := json.NewDecoder(strings.NewReader(data))
+		dec.UseNumber()
+		var m map[string]any
+		if dec.Decode(&m) != nil {
+			return out, nil
+		}
+		found, _ := m["found"].(bool)
+		key, _ := m["usage_key"].(json.Number)
+		if !found || key == "" {
+			return out, nil
+		}
+		vout, _, verr := codeCall(ctx, em, vern, `{"usage_key":`+key.String()+`}`)
+		if verr != nil {
+			m["vernacular_rus_error"] = verr.Error()
+		} else {
+			var v struct {
+				Names []string `json:"names"`
+			}
+			vdata, _ := tools.Unwrap(vout)
+			if json.Unmarshal([]byte(vdata), &v) == nil {
+				m["vernacular_rus"] = append([]string{}, v.Names...)
+			}
+		}
+		return tools.Result(m)
+	})
 }
 
 // withTree достраивает дерево кодом: ключ таксона уже подтверждён, и звать

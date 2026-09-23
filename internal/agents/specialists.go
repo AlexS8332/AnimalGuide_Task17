@@ -27,7 +27,8 @@ const sectionSystemTemplate = `Ты агент-специалист по раз�
 - Если подходящих разделов нет, но сведения по теме есть во вступлении (read_wikipedia без section), перескажи их и укажи section = «вступление».
 - В поле section передавай название раздела так, как его вернул read_wikipedia.
 - Длину, форму и уровень пересказа задаёт профиль собеседника, если он есть; иначе — 3–6 предложений по существу.
-- Если сведений по теме в статье нет, сдай found = false с коротким объяснением.`
+- Если сведений по теме в статье нет, сдай found = false с коротким объяснением.
+- Если программа уже прочитала подходящий раздел (его ответ read_wikipedia есть в разговоре) и сведений в нём хватает, не читай его снова — сразу сдавай результат.`
 
 const sectionFinish = `
 
@@ -76,7 +77,8 @@ func ReadSection(ctx context.Context, d Deps, reg *tools.Registry, c card.Card, 
 		spec.System += sectionPlain
 		spec.AllowText = true
 	}
-	reply, err := d.Runner.Run(ctx, spec, agent.Prepared{Blocks: headBlocks(blocks), User: user, Features: fs}, em)
+	reply, err := d.Runner.Run(ctx, spec, agent.Prepared{Blocks: headBlocks(blocks), User: user, Features: fs,
+		Preload: sectionPreload(c, topic)}, em)
 	if err != nil {
 		return card.Section{}, reply.Stats, fmt.Errorf("раздел «%s»: %w", topic.Title, err)
 	}
@@ -87,6 +89,67 @@ func ReadSection(ctx context.Context, d Deps, reg *tools.Registry, c card.Card, 
 		return card.Section{}, reply.Stats, fmt.Errorf("раздел «%s»: специалист не сдал результат", topic.Title)
 	}
 	return *got, reply.Stats, nil
+}
+
+// sectionPreloadMax — сколько разделов читать кодом до специалиста. Два —
+// как он сам чаще всего и читает («Распространение и численность» плюс
+// «Среда обитания»); больше — лишние токены в запросе, а не сбережённый
+// запрос.
+const sectionPreloadMax = 2
+
+// sectionPreload — разделы, которые код читает сам до первого запроса к
+// специалисту. Шаг без выбора: промпт велит начать с раздела, чьё название
+// ближе всего к теме, а кандидаты темы и оглавление статьи известны коду.
+// Специалист получает прочитанное как свой первый шаг и чаще всего сразу
+// сдаёт пересказ — один запрос к модели вместо двух (клик по разделу —
+// ФТ-13, бюджет $0.001). Совпадения нет — не читается ничего, и специалист
+// ищет раздел сам, как раньше. Проверка по трекеру не ослабевает: вызов
+// кодом идёт через тот же наблюдаемый инструмент, что и вызов моделью.
+func sectionPreload(c card.Card, topic card.Topic) []agent.Preload {
+	if strings.TrimSpace(c.Article) == "" {
+		return nil
+	}
+	var out []agent.Preload
+	for _, h := range TopicHeadings(c.Headings, topic) {
+		out = append(out, agent.Preload{Tool: "read_wikipedia", Args: jsonArgs(map[string]string{"title": c.Article, "section": h})})
+	}
+	return out
+}
+
+// TopicHeadings — разделы оглавления, подходящие теме: сначала точные
+// совпадения с кандидатами темы в их порядке, потом заголовки, в которых
+// кандидат содержится («Охота и питание» для «Питание»). Не больше
+// sectionPreloadMax.
+func TopicHeadings(headings []string, topic card.Topic) []string {
+	low := func(s string) string { return strings.ReplaceAll(strings.ToLower(strings.TrimSpace(s)), "ё", "е") }
+	var out []string
+	seen := map[string]bool{}
+	add := func(h string) {
+		if k := low(h); k != "" && !seen[k] && len(out) < sectionPreloadMax {
+			seen[k] = true
+			out = append(out, strings.TrimSpace(h))
+		}
+	}
+	for _, cand := range topic.Candidates {
+		for _, h := range headings {
+			if low(h) == low(cand) {
+				add(h)
+			}
+		}
+	}
+	for _, cand := range topic.Candidates {
+		for _, h := range headings {
+			if strings.Contains(low(h), low(cand)) {
+				add(h)
+			}
+		}
+	}
+	return out
+}
+
+func jsonArgs(v any) string {
+	data, _ := json.Marshal(v)
+	return string(data)
 }
 
 func headingsOr(h []string) []string {
