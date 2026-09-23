@@ -57,6 +57,20 @@ type Request struct {
 	// Blocks — блоки механизмов для ведущего в порядке реестра.
 	Blocks   []features.Block `json:"-"`
 	Features features.Set     `json:"-"`
+	// Tools — инструменты механизмов хода (сверка со сводом, поправка):
+	// их получает агент, который пишет человеку, — ведущий или составитель.
+	Tools []tools.Tool `json:"-"`
+	// Rules — абзац системного промпта от выключенных механизмов: то, что
+	// должно было уйти блоком, уходит словами (ФТ-48).
+	Rules string `json:"-"`
+}
+
+// System — системный промпт агента с абзацем правил хода.
+func (r Request) System(base string) string {
+	if strings.TrimSpace(r.Rules) == "" {
+		return base
+	}
+	return base + "\n\n" + strings.TrimSpace(r.Rules)
 }
 
 // Result — итог хода.
@@ -409,7 +423,8 @@ func (t *turn) lead(ctx context.Context, req Request) (agent.Reply, error) {
 		return agent.Reply{}, err
 	}
 	list := append(t.leadTools(ctx), src...)
-	spec := agent.Spec{Name: "lead", System: leadSystem, Tools: list, MaxSteps: leadMaxSteps}
+	list = append(list, req.Tools...)
+	spec := agent.Spec{Name: "lead", System: req.System(leadSystem), Tools: list, MaxSteps: leadMaxSteps}
 	blocks := withCards(t.d.Features, req.Blocks, t.state(), t.fs)
 	reply, err := t.d.Runner.Run(ctx, spec, agent.Prepared{Blocks: blocks, History: req.Window, User: req.Text, Features: t.fs}, t.em)
 	t.add(reply.Stats)

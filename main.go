@@ -15,26 +15,19 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"path/filepath"
 	"strings"
 	"time"
 
 	"github.com/AlexS8332/AnimalGuide/internal/agent"
-	"github.com/AlexS8332/AnimalGuide/internal/agents"
-	"github.com/AlexS8332/AnimalGuide/internal/collection"
-	"github.com/AlexS8332/AnimalGuide/internal/compiler"
-	"github.com/AlexS8332/AnimalGuide/internal/extract"
+	"github.com/AlexS8332/AnimalGuide/internal/charter"
 	"github.com/AlexS8332/AnimalGuide/internal/features"
 	"github.com/AlexS8332/AnimalGuide/internal/history"
+	"github.com/AlexS8332/AnimalGuide/internal/invariants"
 	"github.com/AlexS8332/AnimalGuide/internal/llm"
-	"github.com/AlexS8332/AnimalGuide/internal/mcp"
-	"github.com/AlexS8332/AnimalGuide/internal/memory"
 	"github.com/AlexS8332/AnimalGuide/internal/persona"
-	"github.com/AlexS8332/AnimalGuide/internal/profile"
-	"github.com/AlexS8332/AnimalGuide/internal/runs"
 	"github.com/AlexS8332/AnimalGuide/internal/server"
-	"github.com/AlexS8332/AnimalGuide/internal/store"
 	"github.com/AlexS8332/AnimalGuide/internal/tokens"
-	"github.com/AlexS8332/AnimalGuide/internal/tools"
 )
 
 // Фронтенд лежит в бинарнике: после `go build` приложение запускается одним
@@ -61,6 +54,9 @@ type options struct {
 	mcpServer                         string
 	open                              bool
 	window, keep, limit               int
+	// report — опыт -report вместо сервера: испытания и отчёт в markdown.
+	report            bool
+	trials, reportOut string
 }
 
 func parseFlags() options {
@@ -74,6 +70,9 @@ func parseFlags() options {
 	flag.IntVar(&o.limit, "context-limit", defaultContextLimit, "свой лимит контекста в токенах; 0 — не проверять")
 	flag.StringVar(&o.mcpServer, "mcp-server", "", "бинарник MCP-сервера источников (механизм mcp); пусто — рядом с приложением, в PATH или сборка из исходников")
 	flag.StringVar(&o.overflow, "on-overflow", agent.OverflowFail, "что делать при переполнении: fail — не отправлять, trim — выбрасывать старые ходы, off — отправить как есть")
+	flag.BoolVar(&o.report, "report", false, "прогнать испытания на живой модели и записать отчёт вместо запуска сервера")
+	flag.StringVar(&o.trials, "trials", "all", "какие испытания гонять с -report: «all», «1,6», «И-2»")
+	flag.StringVar(&o.reportOut, "report-out", filepath.Join("examples", "report.md"), "куда записать отчёт -report")
 	flag.Parse()
 	return o
 }
@@ -106,36 +105,21 @@ func main() {
 		model = llm.DefaultModel
 	}
 
-	fetcher := tools.NewFetcher()
-	localTools := tools.LocalTools(fetcher, os.Getenv("WIKIPEDIA_BASE_URL"), os.Getenv("GBIF_BASE_URL"))
-	local := tools.MustRegistry(localTools...)
-	// Путь до источников выбирается на каждый ход по механизмам диалога:
-	// mcp выключен — вызов в процессе, включён — через MCP-сервер. Процесс
-	// сервера запускается при первом ходе с mcp, не раньше. Адреса
-	// источников сервер берёт из тех же переменных окружения.
-	launcher := &mcp.Launcher{Path: o.mcpServer}
-	mcpClient := mcp.NewClient(mcp.Options{Dial: launcher.Dial, Want: tools.Fingerprint(localTools)})
-	sources := &mcp.Switch{Local: local, Client: mcpClient, How: launcher.How}
 	runner := agent.Runner{
 		LLM: llm.NewClient(apiKey, os.Getenv("DEEPSEEK_BASE_URL")), Model: model, Temperature: 0,
 		ContextLimit: o.limit, OnOverflow: o.overflow, Calibration: &tokens.Calibration{},
 	}
-	data := store.NewDir(o.data)
-	people := &persona.Hook{
-		Memory:    memory.NewStore(data),
-		Profiles:  profile.NewStore(data),
-		Extractor: extract.Extractor{LLM: runner.LLM, Model: model},
+	if o.report {
+		if err := runReport(o, registry, defaults, runner, model); err != nil {
+			fail(err)
+		}
+		return
 	}
-	deps := agents.Deps{Runner: runner, Features: registry, Sources: sources}
-	compile := &compiler.Hook{Agents: deps, Store: collection.NewStore(data)}
-	manager := runs.NewManager(runs.Config{
-		Agents:   deps,
-		Store:    history.NewStore(data),
-		Registry: registry, Defaults: defaults, Timeout: turnTimeout,
-		Window: o.window, KeepToolRunes: o.keep,
-		// Составитель раньше человека: его ход видит блоки профиля и памяти.
-		Hooks: []runs.Hook{compile, people},
-	})
+	a, err := wire(o, registry, defaults, runner, o.data, "")
+	if err != nil {
+		fail(err)
+	}
+	manager, people, compile, guide, local := a.Manager, a.People, a.Compile, a.Guide, a.Local
 	loaded, problems := manager.Load()
 	for _, p := range problems {
 		fmt.Fprintln(os.Stderr, "предупреждение: файл диалога пропущен: "+p.Error())
@@ -146,11 +130,15 @@ func main() {
 		fail(fmt.Errorf("встроенный фронтенд не читается: %w", err))
 	}
 	meta := map[string]any{"model": model, "window": o.window, "contextLimit": o.limit}
-	for k, v := range persona.Meta() {
-		meta[k] = v
+	for _, m := range []map[string]any{persona.Meta(), charter.Meta()} {
+		for k, v := range m {
+			meta[k] = v
+		}
 	}
 	exts := append(people.Extension(), compile.Extension(manager)...)
-	handler := server.New(manager, static, meta, append(exts, sources.Extension()...)...)
+	exts = append(exts, guide.Extension()...)
+	exts = append(exts, a.Sources.Extension()...)
+	handler := server.New(manager, static, meta, exts...)
 
 	listener, err := net.Listen("tcp", o.addr)
 	if err != nil {
@@ -164,6 +152,7 @@ func main() {
 	fmt.Println("  модель:     " + model)
 	fmt.Println("  источники:  " + strings.Join(local.Names(), ", "))
 	fmt.Printf("  диалоги:    %s (загружено: %d)\n", manager.DisplayDir(), loaded)
+	fmt.Println("  свод:       " + guide.Store.DisplayPath(invariants.GuideID))
 	fmt.Println("  механизмы:  " + defaults.String())
 	if defaults.On(features.MCP) {
 		fmt.Println("  MCP:        включён для новых диалогов; сервер запустится при первом ходе")
@@ -189,8 +178,7 @@ func main() {
 	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
 	defer cancel()
 	srv.Shutdown(ctx)
-	mcpClient.Close()
-	launcher.Close()
+	a.Close()
 	fmt.Println("Остановлено. Диалоги остались в " + manager.DisplayDir())
 }
 

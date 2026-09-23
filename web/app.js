@@ -1047,6 +1047,104 @@ app.windows.mcp = {
   },
 };
 
+/* ---------- вёрстка: высота пульта ---------- */
+
+// Журнал липнет под пультом, а высота пульта меняется: панели механизмов
+// появляются и пропадают, строка показаний переносится. Жёсткий отступ
+// прятал верх журнала под пульт — меряем пульт и отдаём высоту в CSS.
+function trackPultHeight() {
+  const pult = $('pult');
+  const apply = () => document.documentElement.style.setProperty('--pult-h', Math.ceil(pult.getBoundingClientRect().height) + 'px');
+  apply();
+  if (window.ResizeObserver) new ResizeObserver(apply).observe(pult);
+  else window.addEventListener('resize', apply);
+}
+trackPultHeight();
+
+/* ---------- свод и страж ---------- */
+
+const ruleKindTitle = { sources: 'достоверность', safety: 'советы и безопасность', tone: 'тон' };
+const actionTitle = { add: 'добавить', amend: 'изменить', retire: 'снять' };
+
+function ruleTip(inv) {
+  return [inv.rule, inv.because ? 'Почему: ' + inv.because : '', inv.instead ? 'Вместо: ' + inv.instead : '',
+    (inv.except || []).length ? 'Не нарушает: ' + inv.except.join('; ') : ''].filter(Boolean).join('\n');
+}
+
+app.panels.charter = v => {
+  const items = (v.items || []).map(inv => inv.status === 'retired'
+    ? `<span class="chip rule-retired" title="${esc('Снято. ' + ruleTip(inv))}">${esc(inv.id)} ${esc(inv.title)}</span>`
+    : `<span class="chip ok" title="${esc(ruleTip(inv))}">${esc(inv.id)} ${esc(inv.title)}</span>`).join('');
+  const pending = (v.pending || []).map(a =>
+    `<span class="chip warn" title="${esc('Основание: ' + a.reason + (a.cost ? '\nЦена: ' + a.cost : '') + '\nПринимает человек своими словами, не раньше следующего хода.')}">⏳ ${esc(actionTitle[a.action] || a.action)}: ${esc(a.proposed.title || a.item_id)}</span>`).join('');
+  const flags = [];
+  if (!v.charter) flags.push('<span class="chip bad" title="Те же правила уходят абзацем системного промпта: без сверки, стража и процедуры">свод выключен — правила словами</span>');
+  if (!v.guard) flags.push('<span class="chip bad" title="Ответ уходит человеку без проверки по своду">страж выключен</span>');
+  return `<section class="panel wide" id="panel-charter"><h2>Свод «${esc(v.title || '')}» <span class="hint">редакция ${v.version}</span>
+      <button type="button" class="small" data-action="openWindow" data-arg="charter">свод</button></h2>
+    <div class="chips">${flags.join('')}${items}${pending}</div>
+    <div class="hint">${esc(v.path || '')}${v.error ? ' · ' + esc(v.error) : ''}</div></section>`;
+};
+
+app.chips.charter = r => {
+  const out = [];
+  if (!r.enabled) out.push('<span class="chip warn" title="Механизм charter выключен: правила ушли абзацем системного промпта">📜 свод выключен — правила словами</span>');
+  for (const c of r.checks || []) {
+    out.push(`<span class="chip ${(c.suspect || []).length ? 'warn' : ''}" title="${esc('Сверка: ' + c.answer)}">📜 сверка${(c.suspect || []).length ? ': похоже на ' + esc(c.suspect.join(', ')) : ' — чисто'}</span>`);
+  }
+  for (const a of r.amendments || []) {
+    const text = a.rejected ? `${a.event} не принято — ${a.reason}` : `${a.summary}`;
+    const tip = [a.amendment ? 'поправка ' + a.amendment : '', a.quote ? 'цитата: «' + a.quote + '»' : '', 'редакция ' + a.version].filter(Boolean).join('\n');
+    out.push(`<span class="chip ${a.rejected ? 'warn' : 'ok'}" title="${esc(tip)}">📜 ${esc(text)}</span>`);
+  }
+  const g = r.guard || {};
+  const rev = g.review || {};
+  switch (g.status) {
+    case 'refused': {
+      const why = (rev.broken || []).map(v => `${v.invariant}: ${v.why || ''}${v.fragment ? ' — «' + v.fragment + '»' : ''}`).join('\n');
+      out.push(`<span class="chip bad" title="${esc(why + '\n\nНе дошло до человека:\n' + (g.original || ''))}">🛡 страж: нарушен ${esc((rev.broken || []).map(v => v.invariant).join(', '))} — ответ заменён</span>`);
+      break;
+    }
+    case 'passed':
+      out.push(`<span class="chip ok" title="${esc((rev.screened || []).map(h => `${h.invariant} «${h.marker}»: ${h.fragment}${h.cleared ? ' — снято: ' + h.why : ''}`).join('\n'))}">🛡 страж: проверено, нарушений нет</span>`);
+      break;
+    case 'unchecked':
+      out.push(`<span class="chip warn" title="${esc(rev.error || '')}">🛡 страж: ответ не проверен</span>`);
+      break;
+    case 'off':
+      out.push('<span class="chip warn" title="Механизм guard выключен">🛡 страж выключен</span>');
+      break;
+  }
+  return out;
+};
+
+app.windows.charter = {
+  title: 'Свод',
+  async render() {
+    const out = await api('GET', '/api/charter');
+    const c = out.charter || {};
+    let html = `<p class="hint">Правила справочника, которые просьба не отменяет. Изменить свод можно только поправкой в разговоре: справочник предлагает, человек принимает своими словами и не раньше следующего хода. ${esc(out.summary || '')}.</p>
+      <table class="grid"><tr><th>№</th><th>вид</th><th>правило</th><th>почему · вместо</th><th>статус</th></tr>${(c.items || []).map(inv =>
+        `<tr class="${inv.status === 'retired' ? 'rule-retired' : ''}"><td>${esc(inv.id)}</td><td>${esc(ruleKindTitle[inv.kind] || inv.kind)}</td>
+         <td><b>${esc(inv.title)}</b><div>${esc(inv.rule)}</div>${(inv.except || []).length ? `<div class="hint">не нарушает: ${esc(inv.except.join('; '))}</div>` : ''}</td>
+         <td>${esc(inv.because || '')}${inv.instead ? `<div class="hint">вместо: ${esc(inv.instead)}</div>` : ''}</td>
+         <td>${inv.status === 'retired' ? 'снято' : 'действует'}</td></tr>`).join('')}</table>`;
+    if ((c.pending || []).length) {
+      html += `<h3 style="margin:10px 0 4px">Открытые поправки</h3><table class="grid"><tr><th>поправка</th><th>что</th><th>основание</th><th>цена</th></tr>${c.pending.map(a =>
+        `<tr><td>${esc(a.id)}</td><td>${esc(actionTitle[a.action] || a.action)}: ${esc(a.proposed.title || a.item_id)}${a.action !== 'retire' ? `<div class="hint">${esc(a.proposed.rule || '')}</div>` : ''}</td>
+         <td>${esc(a.reason)}</td><td>${esc(a.cost || '')}</td></tr>`).join('')}</table>`;
+    }
+    if ((c.log || []).length) {
+      html += `<h3 style="margin:10px 0 4px">Журнал изменений</h3><table class="grid"><tr><th>когда</th><th>ред.</th><th>что</th><th>слова человека</th></tr>${c.log.slice().reverse().map(l =>
+        `<tr><td>${esc(when(l.at))}</td><td>${l.version}</td><td>${esc(actionTitle[l.action] || l.action)}: ${esc(l.title)}<div class="hint">${esc(l.summary)}</div></td><td>${l.quote ? '«' + esc(l.quote) + '»' : ''}</td></tr>`).join('')}</table>`;
+    }
+    html += `<details><summary>Блок свода в запросе</summary><pre>${esc(out.block)}</pre></details>
+      <details><summary>Абзац правил при выключенном своде</summary><pre>${esc(out.plain)}</pre></details>
+      <details><summary>Файл ${esc(out.path)}</summary><pre>${esc(out.json || 'файла ещё нет — действует заготовка')}</pre></details>`;
+    return html;
+  },
+};
+
 refreshMCP();
 setInterval(() => { if (document.visibilityState === 'visible') refreshMCP(); }, 5000);
 

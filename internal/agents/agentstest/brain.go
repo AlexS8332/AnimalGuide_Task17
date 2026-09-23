@@ -35,7 +35,10 @@ type Brain struct {
 	Extract func(req llm.Request) (string, error)
 	// Compiler — ответы составителя подборки по шагам.
 	Compiler func(req llm.Request, step int) llm.Response
-	calls    map[string]int
+	// Judge — ответ судьи свода; пусто — «нарушений нет» по каждому
+	// правилу, которое ему показали.
+	Judge func(req llm.Request) string
+	calls map[string]int
 }
 
 func (b *Brain) count(who string) {
@@ -105,6 +108,30 @@ func LastReply(req llm.Request, name string) string {
 	return ""
 }
 
+var judgedRe = regexp.MustCompile(`(?m)^\[([^\]]+)\] `)
+
+// Verdicts — ответ судьи: по записи на каждое правило, показанное ему в
+// запросе; нарушены — те, что в broken.
+func Verdicts(req llm.Request, broken map[string]string) string {
+	type verdict struct {
+		Invariant string `json:"invariant"`
+		Violates  bool   `json:"violates"`
+		Why       string `json:"why"`
+	}
+	var out struct {
+		Verdicts []verdict `json:"verdicts"`
+	}
+	out.Verdicts = []verdict{}
+	for _, m := range judgedRe.FindAllStringSubmatch(LastUser(req), -1) {
+		why, bad := broken[m[1]]
+		if !bad {
+			why = "ответ правило не нарушает"
+		}
+		out.Verdicts = append(out.Verdicts, verdict{Invariant: m[1], Violates: bad, Why: why})
+	}
+	return Args(out)
+}
+
 var latinRe = regexp.MustCompile(`лат\. ([A-Z][a-z]+ [a-z]+)`)
 var quotedRe = regexp.MustCompile(`«([^»]+)»`)
 
@@ -142,6 +169,12 @@ func (b *Brain) Chat(req llm.Request) (llm.Response, error) {
 			return llmtest.Text("Подборка идёт."), nil
 		}
 		return b.Compiler(req, TurnSteps(req)), nil
+	case strings.HasPrefix(sys, "Ты — судья свода"):
+		b.count("judge")
+		if b.Judge != nil {
+			return llmtest.Text(b.Judge(req)), nil
+		}
+		return llmtest.Text(Verdicts(req, nil)), nil
 	case strings.HasPrefix(sys, "Ты ведёшь память и профиль"):
 		b.count("extract")
 		if b.Extract == nil {

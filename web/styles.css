@@ -158,7 +158,11 @@ table.cmp td.nodata { color: var(--muted); font-style: italic; }
 .composer-actions { display: flex; align-items: center; gap: 10px; }
 
 /* ---------- Журнал ---------- */
-.journal { position: sticky; top: 250px; max-height: calc(100vh - 262px); display: flex; flex-direction: column;
+/* Журнал липнет сразу под пультом. Высота пульта не постоянна: панели
+   подборки и человека добавляют строк, поэтому её меряет app.js и кладёт в
+   --pult-h; 250px — только до первого замера. */
+.journal { position: sticky; top: calc(var(--pult-h, 250px) + 12px); max-height: calc(100vh - var(--pult-h, 250px) - 24px);
+  min-height: 160px; display: flex; flex-direction: column;
   background: var(--card); border: 1px solid var(--line); border-radius: var(--radius); overflow: hidden; }
 .tabs { display: flex; align-items: center; gap: 4px; padding: 6px 8px; border-bottom: 1px solid var(--line); background: #faf6ec; }
 .tab { border-radius: 6px; font-size: 12px; }
@@ -213,3 +217,9 @@ table.grid th { color: var(--muted); font-weight: 600; font-size: 12px; }
 .items { display: flex; flex-wrap: wrap; gap: 2px 14px; font-size: 13px; margin: 2px 0 4px; }
 .items .item.current { font-weight: 600; }
 a.small { font-size: 12px; font-weight: normal; margin-left: 4px; text-transform: none; letter-spacing: 0; }
+
+/* свод */
+.rule-retired { text-decoration: line-through; opacity: .6; }
+#panel-charter .chips { margin: 2px 0 4px; }
+.window-body details { margin-top: 8px; }
+.window-body summary { cursor: pointer; color: var(--muted); font-size: 13px; }

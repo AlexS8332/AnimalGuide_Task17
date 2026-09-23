@@ -568,3 +568,14 @@ func TestParsePlainCard(t *testing.T) {
 		t.Errorf("подтверждённая карточка контрольной дорожки: %+v", c)
 	}
 }
+
+// Абзац правил выключенного механизма дописывается к системному промпту;
+// пустой — промпт не трогается ни на байт.
+func TestRequestSystemRules(t *testing.T) {
+	if (Request{}).System("база") != "база" || (Request{Rules: "  "}).System("база") != "база" {
+		t.Fatal("пустые правила изменили промпт")
+	}
+	if got := (Request{Rules: " правила \n"}).System("база"); got != "база\n\nправила" {
+		t.Fatalf("%q", got)
+	}
+}
