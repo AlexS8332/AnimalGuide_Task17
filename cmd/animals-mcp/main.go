@@ -41,8 +41,9 @@ func main() {
 
 	// Кэш источников у сервера свой: это второй кэш рядом с кэшем
 	// приложения, и он — часть цены механизма.
-	ts := tools.LocalTools(tools.NewFetcher(), *wikiBase, *gbifBase)
-	srv := mcp.NewServer(ts, mcp.ServerOptions{WikiBase: *wikiBase, GBIFBase: *gbifBase, Logger: logger})
+	fetcher := tools.NewFetcher()
+	ts := tools.LocalTools(fetcher, *wikiBase, *gbifBase)
+	srv := mcp.NewServer(ts, mcp.ServerOptions{WikiBase: *wikiBase, GBIFBase: *gbifBase, Fetcher: fetcher, Logger: logger})
 
 	// Ctrl+C закрывает соединение так же, как закрытый клиентом stdin.
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt)

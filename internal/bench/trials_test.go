@@ -406,12 +406,12 @@ func TestLeakedBlock(t *testing.T) {
 	r.oneLead("Рысь ест зайцев.")
 	leak := &leakHook{}
 	open := r.open
-	r.env.Open = func(dir string, o Options) (*runs.Manager, error) {
-		m, err := open(dir, o)
+	r.env.Open = func(dir string, o Options) (Build, error) {
+		b, err := open(dir, o)
 		if err == nil {
-			m.AddHook(leak)
+			b.Manager.AddHook(leak)
 		}
-		return m, err
+		return b, err
 	}
 	res := r.run(t, &Cost{Probe: []string{"Где живёт рысь?"}, Mechanisms: []features.Name{features.MemoryLong}})
 	c := find(t, res, "выключенный механизм добавляет токенов", "")
@@ -432,26 +432,6 @@ func (leakHook) Before(_ context.Context, t *runs.Turn) error {
 	return nil
 }
 func (leakHook) After(context.Context, *runs.Turn) error { return nil }
-
-func TestMCPPlaceholder(t *testing.T) {
-	r := newRig(t)
-	res := r.run(t, &MCP{})
-	if res.Skipped == "" || res.Verdict() != Pending || !strings.Contains(res.Skipped, "mcp") {
-		t.Fatalf("И-7 без механизма: %+v", res)
-	}
-	reg, err := features.New(append(features.Catalog().All(), features.Mechanism{Name: MCPName, Kind: features.KindTransport})...)
-	if err != nil {
-		t.Fatal(err)
-	}
-	r.env.Registry = reg
-	if res = r.run(t, &MCP{}); !strings.Contains(res.Skipped, "не реализовано") {
-		t.Fatalf("И-7 без реализации: %q", res.Skipped)
-	}
-	res = r.run(t, &MCP{Impl: stubTrial{}})
-	if res.Skipped != "" || res.Verdict() != Pass {
-		t.Fatalf("И-7 с реализацией: %+v", res)
-	}
-}
 
 type stubTrial struct{}
 

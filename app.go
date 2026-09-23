@@ -29,6 +29,9 @@ type app struct {
 	Compile *compiler.Hook
 	Guide   *charter.Hook
 	Local   *tools.Registry
+	// Fetcher — HTTP-клиент источников в процессе: стенд считает по нему
+	// запросы в сеть.
+	Fetcher *tools.Fetcher
 	// Sources — путь до источников на ход: в процессе или через MCP-сервер.
 	Sources *mcp.Switch
 	// Close гасит клиент и процесс MCP-сервера, если он запускался.
@@ -43,7 +46,8 @@ func wire(o options, registry *features.Registry, defaults features.Set, runner 
 	if wikiBase == "" {
 		wikiBase = os.Getenv("WIKIPEDIA_BASE_URL")
 	}
-	localTools := tools.LocalTools(tools.NewFetcher(), wikiBase, os.Getenv("GBIF_BASE_URL"))
+	fetcher := tools.NewFetcher()
+	localTools := tools.LocalTools(fetcher, wikiBase, os.Getenv("GBIF_BASE_URL"))
 	local := tools.MustRegistry(localTools...)
 	// Путь до источников выбирается на каждый ход по механизмам диалога:
 	// mcp выключен — вызов в процессе, включён — через MCP-сервер. Процесс
@@ -80,6 +84,6 @@ func wire(o options, registry *features.Registry, defaults features.Set, runner 
 		// тому ответу, который дойдёт до человека.
 		Hooks: []runs.Hook{compile, guide, people},
 	})
-	return app{Manager: manager, People: people, Compile: compile, Guide: guide, Local: local,
+	return app{Manager: manager, People: people, Compile: compile, Guide: guide, Local: local, Fetcher: fetcher,
 		Sources: sources, Close: func() { client.Close(); launcher.Close() }}, nil
 }

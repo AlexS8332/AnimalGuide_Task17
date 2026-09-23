@@ -14,7 +14,6 @@ import (
 	"github.com/AlexS8332/AnimalGuide/internal/bench"
 	"github.com/AlexS8332/AnimalGuide/internal/features"
 	"github.com/AlexS8332/AnimalGuide/internal/invariants"
-	"github.com/AlexS8332/AnimalGuide/internal/runs"
 )
 
 // legacyDir — памятники прошлых форматов: проверка совместимости И-6.
@@ -43,13 +42,15 @@ func runReport(o options, registry *features.Registry, defaults features.Set, ru
 		Registry: registry, Base: defaults, Root: root, Legacy: legacyDir, Model: model,
 		Timeout: turnTimeout, Progress: os.Stdout,
 		Judge: charterJudge{invariants.Judge{LLM: runner.LLM, Model: model}},
-		Open: func(dir string, bo bench.Options) (*runs.Manager, error) {
+		Open: func(dir string, bo bench.Options) (bench.Build, error) {
 			a, err := wire(o, registry, defaults, runner, dir, bo.WikiBase)
 			if err != nil {
-				return nil, err
+				return bench.Build{}, err
 			}
 			closers = append(closers, a.Close)
-			return a.Manager, nil
+			// И-7 убивает процесс сервера этой сборки посреди хода и
+			// сверяет журнал с его счётчиками.
+			return bench.Build{Manager: a.Manager, MCP: a.Sources.Client, HTTP: a.Fetcher.Requests}, nil
 		},
 	}
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt)

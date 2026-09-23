@@ -43,7 +43,10 @@ type ServerOptions struct {
 	// WikiBase и GBIFBase — адреса источников для server_info: по ним
 	// видно, в какую Википедию ходит сервер (в тестах — подставную).
 	WikiBase, GBIFBase string
-	Logger             *slog.Logger
+	// Fetcher — HTTP-клиент инструментов сервера: по нему server_info
+	// считает запросы к источникам. nil — не считать.
+	Fetcher *tools.Fetcher
+	Logger  *slog.Logger
 }
 
 // Server — MCP-сервер над инструментами источников. Регистрирует ровно те
@@ -159,6 +162,7 @@ type Info struct {
 	Calls         map[string]int `json:"calls" jsonschema:"сколько раз вызывали каждый инструмент за жизнь процесса"`
 	Errors        map[string]int `json:"errors" jsonschema:"сколько вызовов закончились ошибкой"`
 	TotalCalls    int            `json:"total_calls" jsonschema:"всего вызовов инструментов источников"`
+	HTTPRequests  int64          `json:"http_requests" jsonschema:"сколько HTTP-запросов к источникам ушло в сеть (без попаданий в кэш сервера)"`
 	UptimeSeconds int            `json:"uptime_seconds" jsonschema:"сколько секунд работает сервер"`
 }
 
@@ -186,6 +190,10 @@ func (s *Server) Stats() Info {
 		errs[name] = n
 	}
 	names := append([]string(nil), s.names...)
+	var requests int64
+	if s.o.Fetcher != nil {
+		requests = s.o.Fetcher.Requests()
+	}
 	sort.Strings(names)
 	return Info{
 		Server: ServerName, Version: s.version, PID: os.Getpid(), Tools: names,
@@ -193,7 +201,7 @@ func (s *Server) Stats() Info {
 			{Name: "Википедия (русская)", BaseURL: s.o.WikiBase},
 			{Name: "GBIF", BaseURL: s.o.GBIFBase},
 		},
-		Calls: calls, Errors: errs, TotalCalls: total,
+		Calls: calls, Errors: errs, TotalCalls: total, HTTPRequests: requests,
 		UptimeSeconds: int(time.Since(s.started).Seconds()),
 	}
 }

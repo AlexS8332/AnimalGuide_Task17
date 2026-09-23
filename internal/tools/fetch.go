@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 )
 
@@ -29,7 +30,13 @@ type Fetcher struct {
 
 	mu    sync.Mutex
 	cache map[string][]byte
+	// requests — запросы, ушедшие в сеть (попадания в кэш не считаются):
+	// по ним стенд сравнивает, во что обходится второй кэш у MCP-сервера.
+	requests atomic.Int64
 }
+
+// Requests — сколько HTTP-запросов ушло в сеть за жизнь Fetcher.
+func (f *Fetcher) Requests() int64 { return f.requests.Load() }
 
 func NewFetcher() *Fetcher {
 	return &Fetcher{
@@ -72,6 +79,7 @@ func (f *Fetcher) Get(ctx context.Context, url string) ([]byte, error) {
 		client = &http.Client{Timeout: fetchTimeout}
 	}
 
+	f.requests.Add(1)
 	resp, err := client.Do(req)
 	if err != nil {
 		return nil, fmt.Errorf("запрос %s: %w", shortURL(url), err)

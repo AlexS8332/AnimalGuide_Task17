@@ -49,11 +49,12 @@ func newRig(t *testing.T, serverTools func([]tools.Tool) []tools.Tool) *rig {
 	t.Cleanup(wiki.Close)
 	t.Cleanup(gbif.Close)
 	r := &rig{wiki: wiki, gbif: gbif, local: tools.LocalTools(tools.NewFetcher(), wiki.URL, gbif.URL)}
-	ts := tools.LocalTools(tools.NewFetcher(), wiki.URL, gbif.URL)
+	fetcher := tools.NewFetcher()
+	ts := tools.LocalTools(fetcher, wiki.URL, gbif.URL)
 	if serverTools != nil {
 		ts = serverTools(ts)
 	}
-	r.srv = NewServer(ts, ServerOptions{WikiBase: wiki.URL, GBIFBase: gbif.URL})
+	r.srv = NewServer(ts, ServerOptions{WikiBase: wiki.URL, GBIFBase: gbif.URL, Fetcher: fetcher})
 	return r
 }
 
@@ -514,7 +515,7 @@ func TestServerInfo(t *testing.T) {
 		t.Fatal(err)
 	}
 	if info.Server != ServerName || info.Version != Version || info.PID == 0 || info.Calls["taxon_tree"] != 2 ||
-		info.Errors["taxon_tree"] != 1 || info.TotalCalls != 2 || len(info.Tools) != 6 || info.Sources[0].BaseURL != r.wiki.URL {
+		info.Errors["taxon_tree"] != 1 || info.TotalCalls != 2 || info.HTTPRequests != r.gbif.Calls.Load() || info.HTTPRequests == 0 || len(info.Tools) != 6 || info.Sources[0].BaseURL != r.wiki.URL {
 		t.Fatalf("server_info: %+v", info)
 	}
 }
