@@ -947,6 +947,109 @@ Object.assign(actions, {
   },
 });
 
+/* ---------- MCP-сервер: окно и статус на пульте ---------- */
+
+// Состояние клиента MCP живёт на сервере приложения (/api/mcp). Пульт
+// показывает его значком, окно — инструменты со схемами и счётчики. Окно и
+// значок сервер не поднимают: процесс запускается только ходом с mcp.
+const mcpStatusText = {
+  off: 'не запускался',
+  ready: 'готов',
+  dead: 'упал — поднимется следующим вызовом',
+  drift: 'набор инструментов расходится с локальным',
+  unavailable: 'отложен после частых падений',
+};
+const mcpStatusClass = { off: '', ready: 'ok', dead: 'warn', drift: 'bad', unavailable: 'bad' };
+
+function mcpOn() {
+  const c = app.conv;
+  return !!(c && (c.mechanisms || []).some(m => m.name === 'mcp' && m.on));
+}
+
+async function refreshMCP() {
+  try { app.mcp = await api('GET', '/api/mcp'); } catch (e) { app.mcp = null; }
+  renderMCPPill();
+}
+
+function renderMCPPill() {
+  let pill = $('mcp-pill');
+  if (!pill) {
+    const row = document.querySelector('.pult-row');
+    if (!row) return;
+    pill = document.createElement('button');
+    pill.type = 'button';
+    pill.id = 'mcp-pill';
+    pill.dataset.action = 'openWindow';
+    pill.dataset.arg = 'mcp';
+    pill.style.cursor = 'pointer';
+    row.appendChild(pill);
+  }
+  const v = app.mcp;
+  const st = v ? v.status : 'off';
+  pill.className = 'chip ' + (mcpStatusClass[st] || '');
+  pill.textContent = `MCP: ${st}${mcpOn() ? '' : ' · в диалоге выключен'}`;
+  const lines = [`MCP-сервер источников: ${mcpStatusText[st] || st}`];
+  if (v && v.conn) lines.push(`${v.conn.server} ${v.conn.version}, протокол ${v.conn.protocol}${v.conn.pid ? ', pid ' + v.conn.pid : ''}`);
+  if (v && v.reason) lines.push('причина: ' + v.reason);
+  lines.push('Выключатель — «MCP-сервер источников» в механизмах диалога. Подробности — по клику.');
+  pill.title = lines.join('\n');
+}
+
+function mcpSchemaHTML(schema) {
+  let pretty = '';
+  try { pretty = JSON.stringify(typeof schema === 'string' ? JSON.parse(schema) : schema, null, 2); } catch (e) { pretty = String(schema); }
+  return `<pre>${esc(pretty)}</pre>`;
+}
+
+app.windows.mcp = {
+  title: 'MCP-сервер',
+  async render() {
+    const v = await api('GET', '/api/mcp?server=1');
+    app.mcp = v;
+    renderMCPPill();
+    const st = v.status;
+    let html = `<p><span class="chip ${mcpStatusClass[st] || ''}">${esc(st)}</span> ${esc(mcpStatusText[st] || '')}
+      ${v.reason ? `<div class="hint">причина: ${esc(v.reason)}</div>` : ''}</p>`;
+    html += `<p class="hint">Инструменты источников идут через отдельный процесс по протоколу MCP (stdio): initialize → tools/list → tools/call.
+      Описания сверяются с локальными побайтно — модель не видит разницы. Механизм в этом диалоге ${mcpOn() ? '<b>включён</b>' : '<b>выключен</b> — ходы идут в процессе приложения'}.</p>`;
+    const rows = [];
+    if (v.conn) {
+      rows.push(['сервер', `${v.conn.server} ${v.conn.version}`], ['протокол', v.conn.protocol],
+        ['процесс', v.conn.pid ? 'pid ' + v.conn.pid : '—'], ['подключение', `№${v.conn.n} с ${when(v.conn.since)}`]);
+    }
+    if (v.binary) rows.push(['бинарник', v.binary]);
+    if (v.fingerprint || v.want) rows.push(['отпечаток', `${v.fingerprint || '—'} (локальный ${v.want || '—'})${v.fingerprint && v.fingerprint === v.want ? ' ✓' : ''}`]);
+    rows.push(['перезапуски за минуту', String(v.restarts || 0)]);
+    if (v.until) rows.push(['отложен до', when(v.until)]);
+    if (v.skipped && v.skipped.length) rows.push(['пропущены', v.skipped.join(', ') + ' — не инструменты источников, модели не выдаются']);
+    if (v.server) {
+      rows.push(['работает', plural(v.server.uptime_seconds, 'секунду', 'секунды', 'секунд')],
+        ['вызовов на сервере', String(v.server.total_calls)]);
+      for (const s of v.server.sources || []) rows.push([s.name, s.base_url || 'адрес по умолчанию']);
+    } else if (v.serverError) {
+      rows.push(['server_info', v.serverError]);
+    }
+    html += `<table class="grid">${rows.map(([k, x]) => `<tr><th>${esc(k)}</th><td>${esc(x)}</td></tr>`).join('')}</table>`;
+    if (!v.tools || !v.tools.length) {
+      html += '<p class="hint">Список инструментов появится после первого хода с включённым MCP: сервер запускается лениво.</p>';
+      return html;
+    }
+    const srvCalls = (v.server && v.server.calls) || {};
+    const srvErrs = (v.server && v.server.errors) || {};
+    html += `<h3>Инструменты (tools/list)</h3><table class="grid"><tr><th>инструмент</th><th>вызовов</th><th>ошибок</th><th>в среднем</th><th>на сервере</th></tr>${v.tools.map(t =>
+      `<tr><td><b>${esc(t.name)}</b></td><td>${t.calls}</td><td>${t.errors}</td>
+        <td>${t.calls ? Math.round(t.millis / t.calls) + ' мс' : '—'}</td>
+        <td>${v.server ? (srvCalls[t.name] || 0) + (srvErrs[t.name] ? ` (ошибок ${srvErrs[t.name]})` : '') : '—'}</td></tr>
+       <tr><td colspan="5"><details><summary class="hint">${esc(t.description)}</summary>${mcpSchemaHTML(t.inputSchema)}</details></td></tr>`).join('')}</table>`;
+    html += '<p class="hint">«вызовов» — со стороны приложения за его жизнь; «на сервере» — счётчик текущего процесса сервера (server_info), после перезапуска он начинается с нуля.</p>';
+    html += '<p><button type="button" class="small" data-action="openWindow" data-arg="mcp">обновить</button></p>';
+    return html;
+  },
+};
+
+refreshMCP();
+setInterval(() => { if (document.visibilityState === 'visible') refreshMCP(); }, 5000);
+
 /* ---------- события DOM ---------- */
 
 document.addEventListener('click', ev => {
