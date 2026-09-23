@@ -8,6 +8,7 @@ import (
 	"testing"
 
 	"github.com/AlexS8332/AnimalGuide/internal/agent"
+	"github.com/AlexS8332/AnimalGuide/internal/agents/agentstest"
 	"github.com/AlexS8332/AnimalGuide/internal/card"
 	"github.com/AlexS8332/AnimalGuide/internal/features"
 	"github.com/AlexS8332/AnimalGuide/internal/llm"
@@ -18,7 +19,7 @@ import (
 
 type env struct {
 	d     Deps
-	b     *brain
+	b     *agentstest.Brain
 	fake  *llmtest.Fake
 	wiki  *toolstest.Wiki
 	gbif  *toolstest.GBIF
@@ -33,7 +34,7 @@ func newEnv(t *testing.T) *env {
 	wiki, gbif := toolstest.NewWiki(), toolstest.NewGBIF()
 	t.Cleanup(wiki.Close)
 	t.Cleanup(gbif.Close)
-	b := &brain{}
+	b := &agentstest.Brain{}
 	fake := &llmtest.Fake{Fn: b.Chat}
 	reg := tools.MustRegistry(tools.LocalTools(tools.NewFetcher(), wiki.URL, gbif.URL)...)
 	rec := &agent.Recorder{}

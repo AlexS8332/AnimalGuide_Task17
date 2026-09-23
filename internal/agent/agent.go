@@ -166,7 +166,9 @@ type Stats struct {
 }
 
 // Add складывает счётчики нескольких прогонов (ход из нескольких агентов).
-// Контекст берётся от первого — это главный агент хода.
+// Контекст берётся от самого тяжёлого прогона: разбивка по блокам нужна
+// там, где запрос больше всего, — у привратника на 300 токенов её смотреть
+// незачем.
 func (s Stats) Add(o Stats) Stats {
 	out := s
 	out.Steps += o.Steps
@@ -175,8 +177,12 @@ func (s Stats) Add(o Stats) Stats {
 	out.Cost = s.Cost.Add(o.Cost)
 	out.Reminders += o.Reminders
 	out.Rejected += o.Rejected
-	if out.Context.Estimate.Total == 0 {
+	if o.Context.Estimate.Total > out.Context.Estimate.Total {
+		peak := out.Context.Peak
 		out.Context = o.Context
+		if peak > out.Context.Peak {
+			out.Context.Peak = peak
+		}
 	}
 	if o.Context.Peak > out.Context.Peak {
 		out.Context.Peak = o.Context.Peak

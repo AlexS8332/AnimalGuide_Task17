@@ -8,7 +8,6 @@ package main
 import (
 	"context"
 	"embed"
-	"encoding/json"
 	"flag"
 	"fmt"
 	"io/fs"
@@ -19,8 +18,16 @@ import (
 	"strings"
 	"time"
 
+	"github.com/AlexS8332/AnimalGuide/internal/agent"
+	"github.com/AlexS8332/AnimalGuide/internal/agents"
 	"github.com/AlexS8332/AnimalGuide/internal/features"
+	"github.com/AlexS8332/AnimalGuide/internal/history"
 	"github.com/AlexS8332/AnimalGuide/internal/llm"
+	"github.com/AlexS8332/AnimalGuide/internal/runs"
+	"github.com/AlexS8332/AnimalGuide/internal/server"
+	"github.com/AlexS8332/AnimalGuide/internal/store"
+	"github.com/AlexS8332/AnimalGuide/internal/tokens"
+	"github.com/AlexS8332/AnimalGuide/internal/tools"
 )
 
 // Фронтенд лежит в бинарнике: после `go build` приложение запускается одним
@@ -29,28 +36,60 @@ import (
 //go:embed web
 var webFiles embed.FS
 
-// Слушаем только петлевой интерфейс: приложение локальное.
-const defaultAddr = "127.0.0.1:8770"
+const (
+	// Слушаем только петлевой интерфейс: приложение локальное.
+	defaultAddr = "127.0.0.1:8770"
+	// Общий срок одного хода: подборка — это десятки запросов.
+	turnTimeout = 10 * time.Minute
+	// defaultContextLimit — свой лимит контекста: у DeepSeek в отказе API
+	// стоит 1048576 (1 Mi), изменить его нельзя — max_tokens ограничивает
+	// только ответ. Поэтому лимит живёт здесь и ловит переполнение до
+	// отправки.
+	defaultContextLimit = 1_048_576
+)
+
+// options — флаги запуска.
+type options struct {
+	addr, data, featureSpec, overflow string
+	open                              bool
+	window, keep, limit               int
+}
+
+func parseFlags() options {
+	var o options
+	flag.StringVar(&o.addr, "addr", defaultAddr, "адрес, на котором слушать")
+	flag.BoolVar(&o.open, "open", true, "открыть браузер при старте")
+	flag.StringVar(&o.data, "data", ".", "каталог данных: history, memory, profiles, collections, invariants")
+	flag.StringVar(&o.featureSpec, "features", "", "механизмы новых диалогов поверх умолчаний: «+mcp,-guard», «none,charter», «all»")
+	flag.IntVar(&o.window, "window", history.DefaultWindow, "сколько последних сообщений уходит модели дословно (механизм window)")
+	flag.IntVar(&o.keep, "keep-tools", history.DefaultKeepToolRunes, "до скольких символов сокращать ответы инструментов прошлых ходов (механизм compact)")
+	flag.IntVar(&o.limit, "context-limit", defaultContextLimit, "свой лимит контекста в токенах; 0 — не проверять")
+	flag.StringVar(&o.overflow, "on-overflow", agent.OverflowFail, "что делать при переполнении: fail — не отправлять, trim — выбрасывать старые ходы, off — отправить как есть")
+	flag.Parse()
+	return o
+}
 
 func main() {
-	addr := flag.String("addr", defaultAddr, "адрес, на котором слушать")
-	open := flag.Bool("open", true, "открыть браузер при старте")
-	featureSpec := flag.String("features", "", "механизмы новых диалогов поверх умолчаний: «+mcp,-guard», «none,charter», «all»")
-	flag.Parse()
-
+	o := parseFlags()
 	enableUTF8Console()
 	loadEnvFiles()
 
+	switch o.overflow {
+	case agent.OverflowFail, agent.OverflowTrim, agent.OverflowOff:
+	default:
+		fail(fmt.Errorf("неизвестный режим -on-overflow=%q; допустимы fail, trim, off", o.overflow))
+	}
 	registry := features.Catalog()
-	set, err := registry.Parse(*featureSpec, registry.Defaults())
+	defaults, err := registry.Parse(o.featureSpec, registry.Defaults())
 	if err != nil {
 		fail(err)
 	}
-	if err := registry.Validate(set); err != nil {
+	if err := registry.Validate(defaults); err != nil {
 		fail(err)
 	}
 
-	if strings.TrimSpace(os.Getenv("DEEPSEEK_API_KEY")) == "" {
+	apiKey := strings.TrimSpace(os.Getenv("DEEPSEEK_API_KEY"))
+	if apiKey == "" {
 		fail(fmt.Errorf("не задан DEEPSEEK_API_KEY — задай переменную окружения или впиши ключ в .env.local (см. .env.example)"))
 	}
 	model := strings.TrimSpace(os.Getenv("DEEPSEEK_MODEL"))
@@ -58,28 +97,43 @@ func main() {
 		model = llm.DefaultModel
 	}
 
+	fetcher := tools.NewFetcher()
+	local := tools.MustRegistry(tools.LocalTools(fetcher, os.Getenv("WIKIPEDIA_BASE_URL"), os.Getenv("GBIF_BASE_URL"))...)
+	runner := agent.Runner{
+		LLM: llm.NewClient(apiKey, os.Getenv("DEEPSEEK_BASE_URL")), Model: model, Temperature: 0,
+		ContextLimit: o.limit, OnOverflow: o.overflow, Calibration: &tokens.Calibration{},
+	}
+	data := store.NewDir(o.data)
+	manager := runs.NewManager(runs.Config{
+		Agents:   agents.Deps{Runner: runner, Features: registry, Sources: agents.Local{Registry: local}},
+		Store:    history.NewStore(data),
+		Registry: registry, Defaults: defaults, Timeout: turnTimeout,
+		Window: o.window, KeepToolRunes: o.keep,
+	})
+	loaded, problems := manager.Load()
+	for _, p := range problems {
+		fmt.Fprintln(os.Stderr, "предупреждение: файл диалога пропущен: "+p.Error())
+	}
+
 	static, err := fs.Sub(webFiles, "web")
 	if err != nil {
 		fail(fmt.Errorf("встроенный фронтенд не читается: %w", err))
 	}
-	mux := http.NewServeMux()
-	mux.Handle("/", http.FileServer(http.FS(static)))
-	mux.HandleFunc("/api/features", func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Content-Type", "application/json; charset=utf-8")
-		json.NewEncoder(w).Encode(map[string]any{"mechanisms": registry.Describe(set), "model": model})
-	})
+	handler := server.New(manager, static, map[string]any{"model": model, "window": o.window, "contextLimit": o.limit})
 
-	listener, err := net.Listen("tcp", *addr)
+	listener, err := net.Listen("tcp", o.addr)
 	if err != nil {
-		fail(fmt.Errorf("не удалось занять %s: %w", *addr, err))
+		fail(fmt.Errorf("не удалось занять %s: %w", o.addr, err))
 	}
 	url := "http://" + listener.Addr().String()
-	srv := &http.Server{Handler: mux, ReadHeaderTimeout: 10 * time.Second}
+	srv := &http.Server{Handler: handler, ReadHeaderTimeout: 10 * time.Second}
 
-	fmt.Println("AnimalGuide — справочник по животным")
+	fmt.Println("AnimalGuide — справочник по животным, с которым разговаривают")
 	fmt.Println("  интерфейс:  " + url)
 	fmt.Println("  модель:     " + model)
-	fmt.Println("  механизмы:  " + set.String())
+	fmt.Println("  источники:  " + strings.Join(local.Names(), ", "))
+	fmt.Printf("  диалоги:    %s (загружено: %d)\n", manager.DisplayDir(), loaded)
+	fmt.Println("  механизмы:  " + defaults.String())
 	fmt.Println("  остановить: Ctrl+C")
 
 	errs := make(chan error, 1)
@@ -88,7 +142,7 @@ func main() {
 			errs <- err
 		}
 	}()
-	if *open {
+	if o.open {
 		openBrowser(url)
 	}
 	signals := make(chan os.Signal, 1)
@@ -101,6 +155,7 @@ func main() {
 	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
 	defer cancel()
 	srv.Shutdown(ctx)
+	fmt.Println("Остановлено. Диалоги остались в " + manager.DisplayDir())
 }
 
 func fail(err error) {

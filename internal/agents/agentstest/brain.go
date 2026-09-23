@@ -1,4 +1,9 @@
-package agents
+// Package agentstest — подставная модель, которая ведёт себя как
+// добросовестные агенты справочника: отвечает по тому, кто спрашивает
+// (системный промпт) и что уже вернули инструменты. Порядок запросов при
+// параллельных специалистах не определён, поэтому сценарий смотрит на
+// содержимое запроса, а не на номер.
+package agentstest
 
 import (
 	"encoding/json"
@@ -12,10 +17,10 @@ import (
 	"github.com/AlexS8332/AnimalGuide/internal/tools"
 )
 
-// brain — подставная модель, которая ведёт себя как добросовестный агент:
+// Brain — подставная модель, которая ведёт себя как добросовестный агент:
 // отвечает по тому, кто спрашивает (системный промпт) и что уже вернули
 // инструменты. Отклонения от добросовестности включаются полями.
-type brain struct {
+type Brain struct {
 	mu sync.Mutex
 	// GateNo — названия, на которые привратник отвечает НЕТ.
 	GateNo []string
@@ -29,7 +34,7 @@ type brain struct {
 	calls    map[string]int
 }
 
-func (b *brain) count(who string) {
+func (b *Brain) count(who string) {
 	b.mu.Lock()
 	defer b.mu.Unlock()
 	if b.calls == nil {
@@ -38,13 +43,16 @@ func (b *brain) count(who string) {
 	b.calls[who]++
 }
 
-func (b *brain) Calls(who string) int {
+// Calls — сколько запросов получил агент (gatekeeper, identifier,
+// section, comparer, lead).
+func (b *Brain) Calls(who string) int {
 	b.mu.Lock()
 	defer b.mu.Unlock()
 	return b.calls[who]
 }
 
-func lastUser(req llm.Request) string {
+// LastUser — последняя реплика пользователя в запросе.
+func LastUser(req llm.Request) string {
 	for i := len(req.Messages) - 1; i >= 0; i-- {
 		if req.Messages[i].Role == llm.RoleUser {
 			return req.Messages[i].Content
@@ -53,8 +61,9 @@ func lastUser(req llm.Request) string {
 	return ""
 }
 
-// toolReplies — ответы инструментов этого прогона с их именами, без обёртки.
-func toolReplies(req llm.Request) []struct{ Name, Out string } {
+// ToolReplies — ответы инструментов запроса с их именами, без пометки
+// источника.
+func ToolReplies(req llm.Request) []struct{ Name, Out string } {
 	names := map[string]string{}
 	var out []struct{ Name, Out string }
 	for _, m := range req.Messages {
@@ -69,8 +78,9 @@ func toolReplies(req llm.Request) []struct{ Name, Out string } {
 	return out
 }
 
-func lastReply(req llm.Request, name string) string {
-	rs := toolReplies(req)
+// LastReply — последний ответ инструмента с этим именем.
+func LastReply(req llm.Request, name string) string {
+	rs := ToolReplies(req)
 	for i := len(rs) - 1; i >= 0; i-- {
 		if rs[i].Name == name {
 			return rs[i].Out
@@ -82,17 +92,19 @@ func lastReply(req llm.Request, name string) string {
 var latinRe = regexp.MustCompile(`лат\. ([A-Z][a-z]+ [a-z]+)`)
 var quotedRe = regexp.MustCompile(`«([^»]+)»`)
 
-func args(v any) string {
+// Args — аргументы вызова в JSON.
+func Args(v any) string {
 	data, _ := json.Marshal(v)
 	return string(data)
 }
 
-func (b *brain) Chat(req llm.Request) (llm.Response, error) {
+// Chat — ответ на запрос; годится как llmtest.Fake.Fn.
+func (b *Brain) Chat(req llm.Request) (llm.Response, error) {
 	sys := req.Messages[0].Content
 	switch {
 	case strings.HasPrefix(sys, "Ты — зоолог-систематик"):
 		b.count("gatekeeper")
-		name := strings.ToLower(lastUser(req))
+		name := strings.ToLower(LastUser(req))
 		for _, no := range b.GateNo {
 			if strings.Contains(name, no) {
 				return llmtest.Text("- | НЕТ"), nil
@@ -111,15 +123,15 @@ func (b *brain) Chat(req llm.Request) (llm.Response, error) {
 	case strings.Contains(sys, "ведёшь разговор справочника"):
 		b.count("lead")
 		if b.LeadScript != nil {
-			return b.LeadScript(req, len(toolReplies(req))), nil
+			return b.LeadScript(req, len(ToolReplies(req))), nil
 		}
 		return llmtest.Text("Ответ ведущего."), nil
 	}
 	return llm.Response{}, fmt.Errorf("неизвестный агент: %.60s", sys)
 }
 
-func (b *brain) identifier(req llm.Request) llm.Response {
-	query := quotedRe.FindStringSubmatch(lastUser(req))
+func (b *Brain) identifier(req llm.Request) llm.Response {
+	query := quotedRe.FindStringSubmatch(LastUser(req))
 	q := ""
 	if query != nil {
 		q = query[1]
@@ -127,9 +139,9 @@ func (b *brain) identifier(req llm.Request) llm.Response {
 	if b.TextOnly {
 		return llmtest.Text(`{"name_ru":"Рысь","latin":"Lynx rufus","wiki_title":"Рысь","summary":"по памяти"}`)
 	}
-	search := lastReply(req, "search_wikipedia")
+	search := LastReply(req, "search_wikipedia")
 	if search == "" {
-		return llmtest.ToolCall("search_wikipedia", args(map[string]string{"query": q}))
+		return llmtest.ToolCall("search_wikipedia", Args(map[string]string{"query": q}))
 	}
 	var hits struct {
 		Results []struct{ Title string } `json:"results"`
@@ -145,9 +157,9 @@ func (b *brain) identifier(req llm.Request) llm.Response {
 	if title == "" {
 		return llmtest.ToolCall("report_not_found", `{"reason":"статьи именно об этом животном нет"}`)
 	}
-	read := lastReply(req, "read_wikipedia")
+	read := LastReply(req, "read_wikipedia")
 	if read == "" {
-		return llmtest.ToolCall("read_wikipedia", args(map[string]string{"title": title}))
+		return llmtest.ToolCall("read_wikipedia", Args(map[string]string{"title": title}))
 	}
 	var art struct {
 		Title string `json:"title"`
@@ -160,12 +172,12 @@ func (b *brain) identifier(req llm.Request) llm.Response {
 	}
 	latin := m[1]
 	if b.FakeLatin != "" && !refused(req) {
-		return llmtest.ToolCall("submit_card", args(map[string]any{"name_ru": q, "latin": b.FakeLatin, "wiki_title": art.Title, "summary": "по памяти"}))
+		return llmtest.ToolCall("submit_card", Args(map[string]any{"name_ru": q, "latin": b.FakeLatin, "wiki_title": art.Title, "summary": "по памяти"}))
 	}
-	if lastReply(req, "match_taxon") == "" {
-		return llmtest.ToolCall("match_taxon", args(map[string]string{"scientific_name": latin}))
+	if LastReply(req, "match_taxon") == "" {
+		return llmtest.ToolCall("match_taxon", Args(map[string]string{"scientific_name": latin}))
 	}
-	return llmtest.ToolCall("submit_card", args(map[string]any{
+	return llmtest.ToolCall("submit_card", Args(map[string]any{
 		"name_ru": art.Title, "latin": latin, "wiki_title": art.Title, "summary": firstSentence(art.Intro),
 		"tree_ru": []map[string]string{{"name": "Felidae", "name_ru": "Кошачьи"}, {"name": "Mammalia", "name_ru": "Млекопитающие"}},
 	}))
@@ -201,8 +213,8 @@ func firstSentence(s string) string {
 	return s
 }
 
-func (b *brain) section(req llm.Request) llm.Response {
-	user := lastUser(req)
+func (b *Brain) section(req llm.Request) llm.Response {
+	user := LastUser(req)
 	title := quotedRe.FindStringSubmatch(user)[1]
 	topic := ""
 	if i := strings.LastIndex(user, "Тема: "); i >= 0 {
@@ -211,9 +223,9 @@ func (b *brain) section(req llm.Request) llm.Response {
 	// Кандидаты по теме, как в промпте.
 	want := map[string]string{"Питание": "питание", "Ареал": "распространение", "Статус охраны": "охран",
 		"Размножение": "размножение", "Образ жизни": "образ жизни"}[topic]
-	read := lastReply(req, "read_wikipedia")
+	read := LastReply(req, "read_wikipedia")
 	if read == "" {
-		return llmtest.ToolCall("read_wikipedia", args(map[string]string{"title": title, "section": want}))
+		return llmtest.ToolCall("read_wikipedia", Args(map[string]string{"title": title, "section": want}))
 	}
 	var sec struct {
 		Found   bool   `json:"found"`
@@ -222,16 +234,16 @@ func (b *brain) section(req llm.Request) llm.Response {
 	}
 	json.Unmarshal([]byte(read), &sec)
 	if !sec.Found {
-		return llmtest.ToolCall("submit_section", args(map[string]any{"found": false, "section": "", "text": "в статье нет раздела о теме «" + topic + "»"}))
+		return llmtest.ToolCall("submit_section", Args(map[string]any{"found": false, "section": "", "text": "в статье нет раздела о теме «" + topic + "»"}))
 	}
-	return llmtest.ToolCall("submit_section", args(map[string]any{"found": true, "section": sec.Section, "text": "Пересказ: " + sec.Text}))
+	return llmtest.ToolCall("submit_section", Args(map[string]any{"found": true, "section": sec.Section, "text": "Пересказ: " + sec.Text}))
 }
 
-func (b *brain) comparer(req llm.Request) llm.Response {
-	titles := quotedRe.FindAllStringSubmatch(lastUser(req), -1)
+func (b *Brain) comparer(req llm.Request) llm.Response {
+	titles := quotedRe.FindAllStringSubmatch(LastUser(req), -1)
 	a, c := titles[0][1], titles[1][1]
 	reads := 0
-	for _, r := range toolReplies(req) {
+	for _, r := range ToolReplies(req) {
 		if r.Name == "read_wikipedia" {
 			reads++
 		}
@@ -239,10 +251,10 @@ func (b *brain) comparer(req llm.Request) llm.Response {
 	switch reads {
 	case 0:
 		return llmtest.ToolCalls(
-			llmtest.Call{Name: "read_wikipedia", Args: args(map[string]string{"title": a, "section": "Распространение"})},
-			llmtest.Call{Name: "read_wikipedia", Args: args(map[string]string{"title": c, "section": "Распространение"})})
+			llmtest.Call{Name: "read_wikipedia", Args: Args(map[string]string{"title": a, "section": "Распространение"})},
+			llmtest.Call{Name: "read_wikipedia", Args: Args(map[string]string{"title": c, "section": "Распространение"})})
 	}
-	return llmtest.ToolCall("submit_comparison", args(map[string]any{"rows": []map[string]string{
+	return llmtest.ToolCall("submit_comparison", Args(map[string]any{"rows": []map[string]string{
 		{"aspect": "Ареал", "a": "леса Евразии", "a_section": "Распространение", "b": "степи Азии", "b_section": "Распространение"},
 		{"aspect": "Размеры", "a": "крупная", "a_section": "Внешний вид", "b": "сведений нет", "b_section": ""},
 	}}))

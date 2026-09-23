@@ -424,9 +424,11 @@ func TestStatsAdd(t *testing.T) {
 	if s.Steps != 4 || s.ToolCalls != 3 || s.Rejected != 1 || s.Context.Estimate.Total != 100 || s.Context.Peak != 500 {
 		t.Fatalf("%+v", s)
 	}
-	empty := Stats{}.Add(b)
-	if empty.Context.Estimate.Total != 50 {
-		t.Fatal("контекст пустого берётся от второго")
+	// Тяжёлый прогон после лёгкого: контекст хода — его, пик — наибольший.
+	heavy := Stats{Context: Context{Estimate: tokens.Estimate{Total: 900}, Peak: 950}}
+	s = Stats{Context: Context{Estimate: tokens.Estimate{Total: 300}, Peak: 2000}}.Add(heavy)
+	if s.Context.Estimate.Total != 900 || s.Context.Peak != 2000 {
+		t.Fatalf("контекст хода от тяжёлого прогона: %+v", s.Context)
 	}
 }
 
