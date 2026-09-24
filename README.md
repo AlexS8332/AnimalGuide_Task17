@@ -24,8 +24,8 @@ GBIF. Латынь в карточке подтверждена GBIF, перес
 ## Быстрый старт
 
 ```bash
-git clone https://github.com/AlexS8332/AnimalGuide.git
-cd AnimalGuide
+git clone https://github.com/AlexS8332/AnimalGuide_Task17.git
+cd AnimalGuide_Task17
 cp .env.example .env.local   # и вписать в .env.local свой DEEPSEEK_API_KEY
 go build -o animalguide .    # на Windows: go build -o animalguide.exe .
 ./animalguide                # откроет http://127.0.0.1:8770 в браузере
