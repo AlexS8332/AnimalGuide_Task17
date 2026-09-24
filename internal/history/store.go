@@ -4,9 +4,9 @@ import (
 	"fmt"
 	"sort"
 
-	"github.com/AlexS8332/AnimalGuide/internal/llm"
-	"github.com/AlexS8332/AnimalGuide/internal/paths"
-	"github.com/AlexS8332/AnimalGuide/internal/store"
+	"github.com/AlexS8332/AnimalGuide_Task17/internal/llm"
+	"github.com/AlexS8332/AnimalGuide_Task17/internal/paths"
+	"github.com/AlexS8332/AnimalGuide_Task17/internal/store"
 )
 
 // Kind — вид файла «диалог». Версия 1 — форматы прошлых упражнений без поля

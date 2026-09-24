@@ -8,10 +8,10 @@ import (
 	"testing"
 	"time"
 
-	"github.com/AlexS8332/AnimalGuide/internal/agents"
-	"github.com/AlexS8332/AnimalGuide/internal/features"
-	"github.com/AlexS8332/AnimalGuide/internal/llm"
-	"github.com/AlexS8332/AnimalGuide/internal/llm/llmtest"
+	"github.com/AlexS8332/AnimalGuide_Task17/internal/agents"
+	"github.com/AlexS8332/AnimalGuide_Task17/internal/features"
+	"github.com/AlexS8332/AnimalGuide_Task17/internal/llm"
+	"github.com/AlexS8332/AnimalGuide_Task17/internal/llm/llmtest"
 )
 
 // Список диалогов — свежие первыми: правка поднимает диалог наверх.

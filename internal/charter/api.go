@@ -3,8 +3,8 @@ package charter
 import (
 	"net/http"
 
-	"github.com/AlexS8332/AnimalGuide/internal/invariants"
-	"github.com/AlexS8332/AnimalGuide/internal/server"
+	"github.com/AlexS8332/AnimalGuide_Task17/internal/invariants"
+	"github.com/AlexS8332/AnimalGuide_Task17/internal/server"
 )
 
 // Extension — окно «Свод» (ФТ-38): правила, открытые поправки, журнал

@@ -10,10 +10,10 @@ import (
 	"strings"
 	"time"
 
-	"github.com/AlexS8332/AnimalGuide/internal/agent"
-	"github.com/AlexS8332/AnimalGuide/internal/bench"
-	"github.com/AlexS8332/AnimalGuide/internal/features"
-	"github.com/AlexS8332/AnimalGuide/internal/invariants"
+	"github.com/AlexS8332/AnimalGuide_Task17/internal/agent"
+	"github.com/AlexS8332/AnimalGuide_Task17/internal/bench"
+	"github.com/AlexS8332/AnimalGuide_Task17/internal/features"
+	"github.com/AlexS8332/AnimalGuide_Task17/internal/invariants"
 )
 
 // legacyDir — памятники прошлых форматов: проверка совместимости И-6.

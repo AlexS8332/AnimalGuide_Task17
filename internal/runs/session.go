@@ -11,8 +11,8 @@ import (
 	"sync"
 	"time"
 
-	"github.com/AlexS8332/AnimalGuide/internal/agent"
-	"github.com/AlexS8332/AnimalGuide/internal/history"
+	"github.com/AlexS8332/AnimalGuide_Task17/internal/agent"
+	"github.com/AlexS8332/AnimalGuide_Task17/internal/history"
 )
 
 // Статусы хода в работе.

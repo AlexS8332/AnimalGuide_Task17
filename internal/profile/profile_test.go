@@ -7,7 +7,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/AlexS8332/AnimalGuide/internal/store"
+	"github.com/AlexS8332/AnimalGuide_Task17/internal/store"
 )
 
 func TestFieldsAndNormalize(t *testing.T) {

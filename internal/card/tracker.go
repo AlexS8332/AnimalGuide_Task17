@@ -6,8 +6,8 @@ import (
 	"strings"
 	"sync"
 
-	"github.com/AlexS8332/AnimalGuide/internal/llm"
-	"github.com/AlexS8332/AnimalGuide/internal/tools"
+	"github.com/AlexS8332/AnimalGuide_Task17/internal/llm"
+	"github.com/AlexS8332/AnimalGuide_Task17/internal/tools"
 )
 
 // Tracker запоминает, что агент реально проверил через инструменты. По нему

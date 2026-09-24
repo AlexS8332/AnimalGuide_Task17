@@ -5,9 +5,9 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/AlexS8332/AnimalGuide/internal/agents"
-	"github.com/AlexS8332/AnimalGuide/internal/features"
-	"github.com/AlexS8332/AnimalGuide/internal/history"
+	"github.com/AlexS8332/AnimalGuide_Task17/internal/agents"
+	"github.com/AlexS8332/AnimalGuide_Task17/internal/features"
+	"github.com/AlexS8332/AnimalGuide_Task17/internal/history"
 )
 
 // Cost — И-6, цена, выключатели, совместимость: длинный диалог для кэша,

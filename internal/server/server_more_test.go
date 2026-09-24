@@ -13,9 +13,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/AlexS8332/AnimalGuide/internal/llm"
-	"github.com/AlexS8332/AnimalGuide/internal/llm/llmtest"
-	"github.com/AlexS8332/AnimalGuide/internal/runs"
+	"github.com/AlexS8332/AnimalGuide_Task17/internal/llm"
+	"github.com/AlexS8332/AnimalGuide_Task17/internal/llm/llmtest"
+	"github.com/AlexS8332/AnimalGuide_Task17/internal/runs"
 )
 
 // Разбор тела для расширений (профиль, память, подборка): пустое тело —

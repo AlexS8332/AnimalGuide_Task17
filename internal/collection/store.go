@@ -8,9 +8,9 @@ import (
 	"strings"
 	"sync"
 
-	"github.com/AlexS8332/AnimalGuide/internal/card"
-	"github.com/AlexS8332/AnimalGuide/internal/paths"
-	"github.com/AlexS8332/AnimalGuide/internal/store"
+	"github.com/AlexS8332/AnimalGuide_Task17/internal/card"
+	"github.com/AlexS8332/AnimalGuide_Task17/internal/paths"
+	"github.com/AlexS8332/AnimalGuide_Task17/internal/store"
 )
 
 // Kind — вид файла «подборка»: collections/<id>.json.

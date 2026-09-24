@@ -5,7 +5,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/AlexS8332/AnimalGuide/internal/words"
+	"github.com/AlexS8332/AnimalGuide_Task17/internal/words"
 )
 
 // Процедура изменения свода (ФТ-31).

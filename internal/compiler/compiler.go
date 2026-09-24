@@ -13,15 +13,15 @@ import (
 	"regexp"
 	"strings"
 
-	"github.com/AlexS8332/AnimalGuide/internal/agent"
-	"github.com/AlexS8332/AnimalGuide/internal/agents"
-	"github.com/AlexS8332/AnimalGuide/internal/card"
-	"github.com/AlexS8332/AnimalGuide/internal/collection"
-	"github.com/AlexS8332/AnimalGuide/internal/features"
-	"github.com/AlexS8332/AnimalGuide/internal/history"
-	"github.com/AlexS8332/AnimalGuide/internal/lifecycle"
-	"github.com/AlexS8332/AnimalGuide/internal/llm"
-	"github.com/AlexS8332/AnimalGuide/internal/runs"
+	"github.com/AlexS8332/AnimalGuide_Task17/internal/agent"
+	"github.com/AlexS8332/AnimalGuide_Task17/internal/agents"
+	"github.com/AlexS8332/AnimalGuide_Task17/internal/card"
+	"github.com/AlexS8332/AnimalGuide_Task17/internal/collection"
+	"github.com/AlexS8332/AnimalGuide_Task17/internal/features"
+	"github.com/AlexS8332/AnimalGuide_Task17/internal/history"
+	"github.com/AlexS8332/AnimalGuide_Task17/internal/lifecycle"
+	"github.com/AlexS8332/AnimalGuide_Task17/internal/llm"
+	"github.com/AlexS8332/AnimalGuide_Task17/internal/runs"
 )
 
 // Name — имя хука и ключ итога в ходе.

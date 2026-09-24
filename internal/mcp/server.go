@@ -23,7 +23,7 @@ import (
 
 	sdk "github.com/modelcontextprotocol/go-sdk/mcp"
 
-	"github.com/AlexS8332/AnimalGuide/internal/tools"
+	"github.com/AlexS8332/AnimalGuide_Task17/internal/tools"
 )
 
 // ServerName — имя сервера в ответе initialize.

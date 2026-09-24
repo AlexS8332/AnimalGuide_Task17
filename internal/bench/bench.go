@@ -26,14 +26,14 @@ import (
 	"sync"
 	"time"
 
-	"github.com/AlexS8332/AnimalGuide/internal/agents"
-	"github.com/AlexS8332/AnimalGuide/internal/collection"
-	"github.com/AlexS8332/AnimalGuide/internal/features"
-	"github.com/AlexS8332/AnimalGuide/internal/history"
-	"github.com/AlexS8332/AnimalGuide/internal/mcp"
-	"github.com/AlexS8332/AnimalGuide/internal/profile"
-	"github.com/AlexS8332/AnimalGuide/internal/runs"
-	"github.com/AlexS8332/AnimalGuide/internal/store"
+	"github.com/AlexS8332/AnimalGuide_Task17/internal/agents"
+	"github.com/AlexS8332/AnimalGuide_Task17/internal/collection"
+	"github.com/AlexS8332/AnimalGuide_Task17/internal/features"
+	"github.com/AlexS8332/AnimalGuide_Task17/internal/history"
+	"github.com/AlexS8332/AnimalGuide_Task17/internal/mcp"
+	"github.com/AlexS8332/AnimalGuide_Task17/internal/profile"
+	"github.com/AlexS8332/AnimalGuide_Task17/internal/runs"
+	"github.com/AlexS8332/AnimalGuide_Task17/internal/store"
 )
 
 // ErrLanes — дорожки стенда отличаются не ровно одним механизмом.

@@ -7,7 +7,7 @@ import (
 	"strings"
 	"sync"
 
-	"github.com/AlexS8332/AnimalGuide/internal/store"
+	"github.com/AlexS8332/AnimalGuide_Task17/internal/store"
 )
 
 // Kind — вид файла «профиль»: profiles/<человек>.json. Версия 1 — анкета

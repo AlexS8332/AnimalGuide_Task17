@@ -4,9 +4,9 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/AlexS8332/AnimalGuide/internal/agents"
-	"github.com/AlexS8332/AnimalGuide/internal/card"
-	"github.com/AlexS8332/AnimalGuide/internal/features"
+	"github.com/AlexS8332/AnimalGuide_Task17/internal/agents"
+	"github.com/AlexS8332/AnimalGuide_Task17/internal/card"
+	"github.com/AlexS8332/AnimalGuide_Task17/internal/features"
 )
 
 // Facts — И-1, достоверность: карточка только из прочитанного в этом

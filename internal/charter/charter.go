@@ -14,13 +14,13 @@ import (
 	"strings"
 	"sync"
 
-	"github.com/AlexS8332/AnimalGuide/internal/agent"
-	"github.com/AlexS8332/AnimalGuide/internal/agents"
-	"github.com/AlexS8332/AnimalGuide/internal/features"
-	"github.com/AlexS8332/AnimalGuide/internal/history"
-	"github.com/AlexS8332/AnimalGuide/internal/invariants"
-	"github.com/AlexS8332/AnimalGuide/internal/llm"
-	"github.com/AlexS8332/AnimalGuide/internal/runs"
+	"github.com/AlexS8332/AnimalGuide_Task17/internal/agent"
+	"github.com/AlexS8332/AnimalGuide_Task17/internal/agents"
+	"github.com/AlexS8332/AnimalGuide_Task17/internal/features"
+	"github.com/AlexS8332/AnimalGuide_Task17/internal/history"
+	"github.com/AlexS8332/AnimalGuide_Task17/internal/invariants"
+	"github.com/AlexS8332/AnimalGuide_Task17/internal/llm"
+	"github.com/AlexS8332/AnimalGuide_Task17/internal/runs"
 )
 
 // Name — имя хука: под ним лежат итог хода и сведения для пульта.

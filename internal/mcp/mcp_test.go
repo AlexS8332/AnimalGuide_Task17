@@ -20,11 +20,11 @@ import (
 
 	sdk "github.com/modelcontextprotocol/go-sdk/mcp"
 
-	"github.com/AlexS8332/AnimalGuide/internal/agent"
-	"github.com/AlexS8332/AnimalGuide/internal/card"
-	"github.com/AlexS8332/AnimalGuide/internal/features"
-	"github.com/AlexS8332/AnimalGuide/internal/tools"
-	"github.com/AlexS8332/AnimalGuide/internal/tools/toolstest"
+	"github.com/AlexS8332/AnimalGuide_Task17/internal/agent"
+	"github.com/AlexS8332/AnimalGuide_Task17/internal/card"
+	"github.com/AlexS8332/AnimalGuide_Task17/internal/features"
+	"github.com/AlexS8332/AnimalGuide_Task17/internal/tools"
+	"github.com/AlexS8332/AnimalGuide_Task17/internal/tools/toolstest"
 )
 
 // rig — подставные Википедия и GBIF, локальный набор инструментов и

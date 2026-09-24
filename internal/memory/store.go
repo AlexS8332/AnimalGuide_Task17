@@ -6,7 +6,7 @@ import (
 	"os"
 	"sync"
 
-	"github.com/AlexS8332/AnimalGuide/internal/store"
+	"github.com/AlexS8332/AnimalGuide_Task17/internal/store"
 )
 
 // Виды файлов памяти. Версия 1 совпадает с форматом слоёв прежних

@@ -5,8 +5,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/AlexS8332/AnimalGuide/internal/card"
-	"github.com/AlexS8332/AnimalGuide/internal/store"
+	"github.com/AlexS8332/AnimalGuide_Task17/internal/card"
+	"github.com/AlexS8332/AnimalGuide_Task17/internal/store"
 )
 
 func plan(t *testing.T, s *State, turn int) {

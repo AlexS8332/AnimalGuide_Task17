@@ -6,7 +6,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/AlexS8332/AnimalGuide/internal/tools/toolstest"
+	"github.com/AlexS8332/AnimalGuide_Task17/internal/tools/toolstest"
 )
 
 // Пустой адрес источника — боевой адрес по умолчанию, хвостовой слеш

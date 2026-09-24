@@ -12,12 +12,12 @@ import (
 
 	sdk "github.com/modelcontextprotocol/go-sdk/mcp"
 
-	"github.com/AlexS8332/AnimalGuide/internal/agent"
-	"github.com/AlexS8332/AnimalGuide/internal/card"
-	"github.com/AlexS8332/AnimalGuide/internal/features"
-	"github.com/AlexS8332/AnimalGuide/internal/history"
-	"github.com/AlexS8332/AnimalGuide/internal/mcp"
-	"github.com/AlexS8332/AnimalGuide/internal/tools"
+	"github.com/AlexS8332/AnimalGuide_Task17/internal/agent"
+	"github.com/AlexS8332/AnimalGuide_Task17/internal/card"
+	"github.com/AlexS8332/AnimalGuide_Task17/internal/features"
+	"github.com/AlexS8332/AnimalGuide_Task17/internal/history"
+	"github.com/AlexS8332/AnimalGuide_Task17/internal/mcp"
+	"github.com/AlexS8332/AnimalGuide_Task17/internal/tools"
 )
 
 // mcpRig — MCP-сервер сборки стенда в памяти. Каждое подключение — новый

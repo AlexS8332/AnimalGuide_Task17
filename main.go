@@ -19,15 +19,15 @@ import (
 	"strings"
 	"time"
 
-	"github.com/AlexS8332/AnimalGuide/internal/agent"
-	"github.com/AlexS8332/AnimalGuide/internal/charter"
-	"github.com/AlexS8332/AnimalGuide/internal/features"
-	"github.com/AlexS8332/AnimalGuide/internal/history"
-	"github.com/AlexS8332/AnimalGuide/internal/invariants"
-	"github.com/AlexS8332/AnimalGuide/internal/llm"
-	"github.com/AlexS8332/AnimalGuide/internal/persona"
-	"github.com/AlexS8332/AnimalGuide/internal/server"
-	"github.com/AlexS8332/AnimalGuide/internal/tokens"
+	"github.com/AlexS8332/AnimalGuide_Task17/internal/agent"
+	"github.com/AlexS8332/AnimalGuide_Task17/internal/charter"
+	"github.com/AlexS8332/AnimalGuide_Task17/internal/features"
+	"github.com/AlexS8332/AnimalGuide_Task17/internal/history"
+	"github.com/AlexS8332/AnimalGuide_Task17/internal/invariants"
+	"github.com/AlexS8332/AnimalGuide_Task17/internal/llm"
+	"github.com/AlexS8332/AnimalGuide_Task17/internal/persona"
+	"github.com/AlexS8332/AnimalGuide_Task17/internal/server"
+	"github.com/AlexS8332/AnimalGuide_Task17/internal/tokens"
 )
 
 // Фронтенд лежит в бинарнике: после `go build` приложение запускается одним

@@ -15,7 +15,7 @@ import (
 	"strings"
 	"unicode"
 
-	"github.com/AlexS8332/AnimalGuide/internal/collection"
+	"github.com/AlexS8332/AnimalGuide_Task17/internal/collection"
 )
 
 // Инструменты подборки.

@@ -10,9 +10,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/AlexS8332/AnimalGuide/internal/llm"
-	"github.com/AlexS8332/AnimalGuide/internal/llm/llmtest"
-	"github.com/AlexS8332/AnimalGuide/internal/store"
+	"github.com/AlexS8332/AnimalGuide_Task17/internal/llm"
+	"github.com/AlexS8332/AnimalGuide_Task17/internal/llm/llmtest"
+	"github.com/AlexS8332/AnimalGuide_Task17/internal/store"
 )
 
 func newStore(t *testing.T) (*Store, string) {

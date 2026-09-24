@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/AlexS8332/AnimalGuide/internal/tools"
+	"github.com/AlexS8332/AnimalGuide_Task17/internal/tools"
 )
 
 // Refusal — отказ завершающего инструмента. Отказ обязан учить (ИП-8):

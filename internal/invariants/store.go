@@ -8,7 +8,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/AlexS8332/AnimalGuide/internal/store"
+	"github.com/AlexS8332/AnimalGuide_Task17/internal/store"
 )
 
 // FileKind — вид файла «свод»: invariants/<свод>.json. Имя Kind занято

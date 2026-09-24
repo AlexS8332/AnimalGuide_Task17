@@ -7,7 +7,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/AlexS8332/AnimalGuide/internal/store"
+	"github.com/AlexS8332/AnimalGuide_Task17/internal/store"
 )
 
 // Итог проверок одной строкой (ФТ-23): «не определить» в знаменатель не

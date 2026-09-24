@@ -12,9 +12,9 @@ import (
 	"strings"
 	"sync"
 
-	"github.com/AlexS8332/AnimalGuide/internal/llm"
-	"github.com/AlexS8332/AnimalGuide/internal/llm/llmtest"
-	"github.com/AlexS8332/AnimalGuide/internal/tools"
+	"github.com/AlexS8332/AnimalGuide_Task17/internal/llm"
+	"github.com/AlexS8332/AnimalGuide_Task17/internal/llm/llmtest"
+	"github.com/AlexS8332/AnimalGuide_Task17/internal/tools"
 )
 
 // Brain — подставная модель, которая ведёт себя как добросовестный агент:

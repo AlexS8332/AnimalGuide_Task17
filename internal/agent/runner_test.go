@@ -8,12 +8,12 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/AlexS8332/AnimalGuide/internal/features"
-	"github.com/AlexS8332/AnimalGuide/internal/llm"
-	"github.com/AlexS8332/AnimalGuide/internal/llm/llmtest"
-	"github.com/AlexS8332/AnimalGuide/internal/tokens"
-	"github.com/AlexS8332/AnimalGuide/internal/tools"
-	"github.com/AlexS8332/AnimalGuide/internal/tools/toolstest"
+	"github.com/AlexS8332/AnimalGuide_Task17/internal/features"
+	"github.com/AlexS8332/AnimalGuide_Task17/internal/llm"
+	"github.com/AlexS8332/AnimalGuide_Task17/internal/llm/llmtest"
+	"github.com/AlexS8332/AnimalGuide_Task17/internal/tokens"
+	"github.com/AlexS8332/AnimalGuide_Task17/internal/tools"
+	"github.com/AlexS8332/AnimalGuide_Task17/internal/tools/toolstest"
 )
 
 func echo(name string, untrusted bool, out string) tools.Tool {

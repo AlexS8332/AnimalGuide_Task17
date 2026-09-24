@@ -7,9 +7,9 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/AlexS8332/AnimalGuide/internal/llm"
-	"github.com/AlexS8332/AnimalGuide/internal/tools"
-	"github.com/AlexS8332/AnimalGuide/internal/tools/toolstest"
+	"github.com/AlexS8332/AnimalGuide_Task17/internal/llm"
+	"github.com/AlexS8332/AnimalGuide_Task17/internal/tools"
+	"github.com/AlexS8332/AnimalGuide_Task17/internal/tools/toolstest"
 )
 
 // world — трекер поверх подставных источников и функция вызова инструмента

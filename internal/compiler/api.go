@@ -6,9 +6,9 @@ import (
 	"net/url"
 	"strings"
 
-	"github.com/AlexS8332/AnimalGuide/internal/collection"
-	"github.com/AlexS8332/AnimalGuide/internal/runs"
-	"github.com/AlexS8332/AnimalGuide/internal/server"
+	"github.com/AlexS8332/AnimalGuide_Task17/internal/collection"
+	"github.com/AlexS8332/AnimalGuide_Task17/internal/runs"
+	"github.com/AlexS8332/AnimalGuide_Task17/internal/server"
 )
 
 // Extension — окно «Подборки» (ФТ-38): список, файл, выгрузка и

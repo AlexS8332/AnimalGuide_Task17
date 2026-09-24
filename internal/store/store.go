@@ -29,7 +29,7 @@ import (
 	"strings"
 	"sync"
 
-	"github.com/AlexS8332/AnimalGuide/internal/paths"
+	"github.com/AlexS8332/AnimalGuide_Task17/internal/paths"
 )
 
 // SchemaKey — имя поля с номером формата.

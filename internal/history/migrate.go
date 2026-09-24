@@ -5,8 +5,8 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/AlexS8332/AnimalGuide/internal/features"
-	"github.com/AlexS8332/AnimalGuide/internal/store"
+	"github.com/AlexS8332/AnimalGuide_Task17/internal/features"
+	"github.com/AlexS8332/AnimalGuide_Task17/internal/store"
 )
 
 // migrate1to2 поднимает диалог прежних упражнений до версии 2. Поля

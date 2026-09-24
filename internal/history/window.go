@@ -1,8 +1,8 @@
 package history
 
 import (
-	"github.com/AlexS8332/AnimalGuide/internal/llm"
-	"github.com/AlexS8332/AnimalGuide/internal/tools"
+	"github.com/AlexS8332/AnimalGuide_Task17/internal/llm"
+	"github.com/AlexS8332/AnimalGuide_Task17/internal/tools"
 )
 
 // DefaultWindow — сколько последних сообщений уходит модели дословно (ФТ-16).

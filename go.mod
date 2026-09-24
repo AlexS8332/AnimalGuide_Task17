@@ -1,4 +1,4 @@
-module github.com/AlexS8332/AnimalGuide
+module github.com/AlexS8332/AnimalGuide_Task17
 
 go 1.25.0
 

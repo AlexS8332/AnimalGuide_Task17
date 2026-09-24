@@ -7,7 +7,7 @@ import (
 	"fmt"
 	"sync"
 
-	"github.com/AlexS8332/AnimalGuide/internal/llm"
+	"github.com/AlexS8332/AnimalGuide_Task17/internal/llm"
 )
 
 // Fake — модель, которую ведёт функция Fn. Requests копит все запросы:

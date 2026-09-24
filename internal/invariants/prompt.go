@@ -8,7 +8,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/AlexS8332/AnimalGuide/internal/tools"
+	"github.com/AlexS8332/AnimalGuide_Task17/internal/tools"
 )
 
 // Как свод попадает в запрос и что модель может с ним сделать.

@@ -10,10 +10,10 @@ import (
 	"time"
 	"unicode"
 
-	"github.com/AlexS8332/AnimalGuide/internal/history"
-	"github.com/AlexS8332/AnimalGuide/internal/memory"
-	"github.com/AlexS8332/AnimalGuide/internal/profile"
-	"github.com/AlexS8332/AnimalGuide/internal/store"
+	"github.com/AlexS8332/AnimalGuide_Task17/internal/history"
+	"github.com/AlexS8332/AnimalGuide_Task17/internal/memory"
+	"github.com/AlexS8332/AnimalGuide_Task17/internal/profile"
+	"github.com/AlexS8332/AnimalGuide_Task17/internal/store"
 )
 
 // Migration — памятник прошлого формата и что с ним стало при чтении.

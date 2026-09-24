@@ -18,7 +18,7 @@ import (
 	"fmt"
 	"sort"
 
-	"github.com/AlexS8332/AnimalGuide/internal/llm"
+	"github.com/AlexS8332/AnimalGuide_Task17/internal/llm"
 )
 
 // Пути до инструмента. Модели не уходят — только в журнал.

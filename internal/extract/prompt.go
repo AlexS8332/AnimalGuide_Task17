@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/AlexS8332/AnimalGuide/internal/profile"
+	"github.com/AlexS8332/AnimalGuide_Task17/internal/profile"
 )
 
 // System — роль извлекателя. Главное в промпте — граница между адресатами

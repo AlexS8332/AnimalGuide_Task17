@@ -7,7 +7,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/AlexS8332/AnimalGuide/internal/llm"
+	"github.com/AlexS8332/AnimalGuide_Task17/internal/llm"
 )
 
 // Судья: вторая ступень стража (ФТ-30).

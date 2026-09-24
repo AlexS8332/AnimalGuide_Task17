@@ -5,7 +5,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/AlexS8332/AnimalGuide/internal/llm"
+	"github.com/AlexS8332/AnimalGuide_Task17/internal/llm"
 )
 
 func req(system string, msgs ...llm.Message) llm.Request {

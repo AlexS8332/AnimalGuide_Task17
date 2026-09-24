@@ -5,10 +5,10 @@ import (
 	"net/http"
 	"strings"
 
-	"github.com/AlexS8332/AnimalGuide/internal/memory"
-	"github.com/AlexS8332/AnimalGuide/internal/paths"
-	"github.com/AlexS8332/AnimalGuide/internal/profile"
-	"github.com/AlexS8332/AnimalGuide/internal/server"
+	"github.com/AlexS8332/AnimalGuide_Task17/internal/memory"
+	"github.com/AlexS8332/AnimalGuide_Task17/internal/paths"
+	"github.com/AlexS8332/AnimalGuide_Task17/internal/profile"
+	"github.com/AlexS8332/AnimalGuide_Task17/internal/server"
 )
 
 // Extension — окна «Картотека профилей» и «Память целиком» (ФТ-38): правит

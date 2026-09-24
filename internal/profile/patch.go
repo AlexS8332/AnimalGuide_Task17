@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/AlexS8332/AnimalGuide/internal/words"
+	"github.com/AlexS8332/AnimalGuide_Task17/internal/words"
 )
 
 // Самопополнение профиля (ФТ-22). Правило, купленное опытом: цитата

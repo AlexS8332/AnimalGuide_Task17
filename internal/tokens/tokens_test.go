@@ -7,8 +7,8 @@ import (
 	"sync"
 	"testing"
 
-	"github.com/AlexS8332/AnimalGuide/internal/features"
-	"github.com/AlexS8332/AnimalGuide/internal/llm"
+	"github.com/AlexS8332/AnimalGuide_Task17/internal/features"
+	"github.com/AlexS8332/AnimalGuide_Task17/internal/llm"
 )
 
 func TestTextByCharClass(t *testing.T) {

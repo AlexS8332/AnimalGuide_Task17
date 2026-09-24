@@ -16,8 +16,8 @@ import (
 	"sync"
 	"unicode"
 
-	"github.com/AlexS8332/AnimalGuide/internal/features"
-	"github.com/AlexS8332/AnimalGuide/internal/llm"
+	"github.com/AlexS8332/AnimalGuide_Task17/internal/features"
+	"github.com/AlexS8332/AnimalGuide_Task17/internal/llm"
 )
 
 // Weights — сколько токенов приходится на символ каждого класса и какие

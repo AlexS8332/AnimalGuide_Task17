@@ -4,8 +4,8 @@ import (
 	"context"
 	"strings"
 
-	"github.com/AlexS8332/AnimalGuide/internal/agent"
-	"github.com/AlexS8332/AnimalGuide/internal/features"
+	"github.com/AlexS8332/AnimalGuide_Task17/internal/agent"
+	"github.com/AlexS8332/AnimalGuide_Task17/internal/features"
 )
 
 const gatekeeperName = "gatekeeper"

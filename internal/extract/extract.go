@@ -24,10 +24,10 @@ import (
 	"strings"
 	"time"
 
-	"github.com/AlexS8332/AnimalGuide/internal/facts"
-	"github.com/AlexS8332/AnimalGuide/internal/llm"
-	"github.com/AlexS8332/AnimalGuide/internal/memory"
-	"github.com/AlexS8332/AnimalGuide/internal/profile"
+	"github.com/AlexS8332/AnimalGuide_Task17/internal/facts"
+	"github.com/AlexS8332/AnimalGuide_Task17/internal/llm"
+	"github.com/AlexS8332/AnimalGuide_Task17/internal/memory"
+	"github.com/AlexS8332/AnimalGuide_Task17/internal/profile"
 )
 
 // recentMessages — сколько последних сообщений показать вместе с репликой:

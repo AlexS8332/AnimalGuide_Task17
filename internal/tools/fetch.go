@@ -18,7 +18,7 @@ const (
 
 	// DefaultUserAgent — Википедия требует осмысленный User-Agent и режет
 	// анонимные клиенты. Ссылка на репозиторий — по её правилам.
-	DefaultUserAgent = "AnimalGuide/1.0 (https://github.com/AlexS8332/AnimalGuide)"
+	DefaultUserAgent = "AnimalGuide/1.0 (https://github.com/AlexS8332/AnimalGuide_Task17)"
 )
 
 // Fetcher — HTTP GET с кэшем ответов в памяти. Агент в одном прогоне

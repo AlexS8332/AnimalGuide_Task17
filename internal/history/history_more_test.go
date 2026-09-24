@@ -3,8 +3,8 @@ package history
 import (
 	"testing"
 
-	"github.com/AlexS8332/AnimalGuide/internal/features"
-	"github.com/AlexS8332/AnimalGuide/internal/paths"
+	"github.com/AlexS8332/AnimalGuide_Task17/internal/features"
+	"github.com/AlexS8332/AnimalGuide_Task17/internal/paths"
 )
 
 // Идентификаторы — 16 шестнадцатеричных знаков, годятся как имя файла и
